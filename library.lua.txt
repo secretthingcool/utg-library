@@ -1,22 +1,50 @@
-- ts called utg lib cuz i love untitled tag game
-- theme and some function is copy from rayfield
-local function getService(n)
-    local s = game:GetService(n)
-    return if cloneref then cloneref(s) else s
+-- ════════════════════════════════════════════════════════════
+--  SERVICES
+-- ════════════════════════════════════════════════════════════
+local Players           = game:GetService("Players")
+local UserInputService  = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
+local HttpService       = game:GetService("HttpService")
+local CoreGui           = game:GetService("CoreGui")
+
+-- cloneref safety (some executors have it, some don't, idk if it work)
+local function safeClone(s)
+    local ok, r = pcall(function()
+        if cloneref then return cloneref(s) end
+        return s
+    end)
+    return ok and r or s
+end
+Players          = safeClone(Players)
+UserInputService = safeClone(UserInputService)
+TweenService     = safeClone(TweenService)
+CoreGui          = safeClone(CoreGui)
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse       = LocalPlayer:GetMouse()
+
+-- ════════════════════════════════════════════════════════════
+--  GUI PARENT HELPER  (no direct syn reference thenn no crash)
+-- ════════════════════════════════════════════════════════════
+local function safeParentGui(gui)
+    local hok, hfn = pcall(function() return gethui end)
+    if hok and hfn then
+        pcall(function() gui.Parent = hfn() end)
+        if gui.Parent then return end
+    end
+    -- protect_gui via rawget so undefined global doesn't crash
+    pcall(function()
+        local _syn = rawget(_G,"syn")
+        if _syn and _syn.protect_gui then _syn.protect_gui(gui) end
+    end)
+    local ok = pcall(function() gui.Parent = CoreGui end)
+    if ok and gui.Parent == CoreGui then return end
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
-local Players        = getService("Players")
-local UserInputService = getService("UserInputService")
-local TweenService   = getService("TweenService")
-local RunService     = getService("RunService")
-local HttpService    = getService("HttpService")
-local CoreGui        = getService("CoreGui")
-
-local LocalPlayer    = Players.LocalPlayer
-local Mouse          = LocalPlayer:GetMouse()
-
---  THEMES 
-
+-- ════════════════════════════════════════════════════════════
+--  THEMES
+-- ════════════════════════════════════════════════════════════
 local Themes = {
     Default = {
         TextColor                    = Color3.fromRGB(240,240,240),
@@ -185,54 +213,55 @@ local Themes = {
     },
 }
 
---  LIBRARY TABLE
-local UTGLibrary = {
-    Flags   = {},
-    Theme   = Themes,
-}
+-- ════════════════════════════════════════════════════════════
+--  LIBRARY
+-- ════════════════════════════════════════════════════════════
+local UTGLibrary = { Flags = {}, Theme = Themes }
 
+-- ════════════════════════════════════════════════════════════
 --  HELPERS
-local function tween(inst, t, props)
+-- ════════════════════════════════════════════════════════════
+local function tw(inst, t, props)
     TweenService:Create(inst, TweenInfo.new(t, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props):Play()
 end
 
-local function corner(parent, rad)
+local function corner(p, r)
     local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, rad or 8)
-    c.Parent = parent
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = p
     return c
 end
 
-local function stroke(parent, color, thick)
+local function mkStroke(p, col, thick)
     local s = Instance.new("UIStroke")
-    s.Color = color or Color3.fromRGB(50,50,50)
+    s.Color     = col   or Color3.fromRGB(50,50,50)
     s.Thickness = thick or 1
-    s.Parent = parent
+    s.Parent    = p
     return s
 end
 
-local function newFrame(parent, size, pos, color, trans)
+local function mkFrame(parent, size, pos, color, trans)
     local f = Instance.new("Frame")
-    f.Parent       = parent
-    f.Size         = size or UDim2.new(1,0,0,30)
-    f.Position     = pos  or UDim2.new(0,0,0,0)
-    f.BackgroundColor3 = color or Color3.fromRGB(35,35,35)
+    f.Parent                 = parent
+    f.Size                   = size  or UDim2.new(1,0,0,30)
+    f.Position               = pos   or UDim2.new(0,0,0,0)
+    f.BackgroundColor3       = color or Color3.fromRGB(35,35,35)
     f.BackgroundTransparency = trans or 0
-    f.BorderSizePixel = 0
+    f.BorderSizePixel        = 0
     return f
 end
 
-local function newLabel(parent, text, size, color, font)
+local function mkLabel(parent, text, size, color, font)
     local l = Instance.new("TextLabel")
-    l.Parent   = parent
-    l.Text     = text or ""
-    l.TextSize = size or 14
-    l.TextColor3 = color or Color3.fromRGB(240,240,240)
-    l.Font     = font or Enum.Font.GothamMedium
+    l.Parent                 = parent
+    l.Text                   = text  or ""
+    l.TextSize               = size  or 14
+    l.TextColor3             = color or Color3.fromRGB(240,240,240)
+    l.Font                   = font  or Enum.Font.GothamMedium
     l.BackgroundTransparency = 1
-    l.Size     = UDim2.new(1,0,1,0)
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.BorderSizePixel = 0
+    l.Size                   = UDim2.new(1,0,1,0)
+    l.TextXAlignment         = Enum.TextXAlignment.Left
+    l.BorderSizePixel        = 0
     return l
 end
 
@@ -240,165 +269,121 @@ local function makeDraggable(frame, handle)
     handle = handle or frame
     local dragging, dragStart, startPos = false, nil, nil
     handle.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or
-           i.UserInputType == Enum.UserInputType.Touch then
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
             dragging  = true
             dragStart = i.Position
             startPos  = frame.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or
-                         i.UserInputType == Enum.UserInputType.Touch) then
-            local delta = i.Position - dragStart
+        if not dragging then return end
+        if i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch then
+            local d = i.Position - dragStart
             frame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or
-           i.UserInputType == Enum.UserInputType.Touch then
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
 end
 
--- Config save/load helpers
-local ConfigFolder = "UTGLibrary"
-local ConfigExt    = ".utg"
-
-local function safePcall(f, ...)
-    local ok, r = pcall(f, ...)
-    return ok, r
-end
+-- Config helpers
+local CFG_FOLDER = "UTGLibrary"
+local CFG_EXT    = ".utg"
 
 local function saveConfig(name, data)
-    if not writefile or not makefolder then return end
-    pcall(makefolder, ConfigFolder)
-    local ok, json = safePcall(function()
-        return HttpService:JSONEncode(data)
-    end)
-    if ok then
-        pcall(writefile, ConfigFolder.."/"..name..ConfigExt, json)
-    end
+    if not (writefile and makefolder) then return end
+    pcall(makefolder, CFG_FOLDER)
+    local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
+    if ok then pcall(writefile, CFG_FOLDER.."/"..name..CFG_EXT, json) end
 end
 
 local function loadConfig(name)
-    if not readfile or not isfile then return {} end
-    local path = ConfigFolder.."/"..name..ConfigExt
-    local ok, content = safePcall(isfile, path)
-    if ok and content then
-        local ok2, data = safePcall(function()
+    if not (readfile and isfile) then return {} end
+    local path = CFG_FOLDER.."/"..name..CFG_EXT
+    local ok, exists = pcall(isfile, path)
+    if ok and exists then
+        local ok2, data = pcall(function()
             return HttpService:JSONDecode(readfile(path))
         end)
-        if ok2 then return data end
+        if ok2 and type(data) == "table" then return data end
     end
     return {}
 end
 
+-- ════════════════════════════════════════════════════════════
 --  CREATE WINDOW
-function UTGLibrary:CreateWindow(config)
-    config = config or {}
-    local windowName   = config.Name      or "UTG Script"
-    local windowInfo   = config.Info      or ""
-    local themeName    = config.Theme     or "Default"
-    local cfgSave      = config.ConfigurationSaving or { Enabled = false, FileName = windowName }
-    local keybind      = config.ToggleKeybind or Enum.KeyCode.RightShift
+-- ════════════════════════════════════════════════════════════
+function UTGLibrary:CreateWindow(cfg)
+    cfg = cfg or {}
+    local windowName  = cfg.Name  or "UTG Script"
+    local windowInfo  = cfg.Info  or ""
+    local themeName   = cfg.Theme or "Default"
+    local cfgSave     = cfg.ConfigurationSaving or { Enabled = false, FileName = windowName }
 
-    local T = Themes[themeName] or Themes.Default  -- active theme
+    -- FIX: store keybind as string .Name, not Enum
+    local keybindName = "RightShift"
+    if cfg.ToggleKeybind then
+        if type(cfg.ToggleKeybind) == "string" then
+            keybindName = cfg.ToggleKeybind
+        else
+            pcall(function() keybindName = cfg.ToggleKeybind.Name end)
+        end
+    end
 
-    -- ── Saved flags ──────────────────────────────────────────
+    local T = Themes[themeName] or Themes.Default
+    local currentTheme = T
+
     local savedFlags = {}
     if cfgSave.Enabled then
         savedFlags = loadConfig(cfgSave.FileName or windowName)
     end
 
-    -- ── Root ScreenGui ────────────────────────────────────────
+    -- ── ScreenGui ─────────────────────────────────────────────
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name            = "UTGLibrary"
-    ScreenGui.ResetOnSpawn    = false
-    ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
+    ScreenGui.Name           = "UTGLibrary"
+    ScreenGui.ResetOnSpawn   = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    safeParentGui(ScreenGui)
 
-    if gethui then
-        ScreenGui.Parent = gethui()
-    elseif syn and syn.protect_gui then
-        syn.protect_gui(ScreenGui)
-        ScreenGui.Parent = CoreGui
-    else
-        pcall(function() ScreenGui.Parent = CoreGui end)
-        if not ScreenGui.Parent or ScreenGui.Parent ~= CoreGui then
-            ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-    end
-
-    -- ── Main Window Frame ─────────────────────────────────────
-    --    Based on sample_ui: 768×417, rounded 9, semi-transparent white
-    local MainFrame = newFrame(ScreenGui,
-        UDim2.new(0,768,0,417),
-        UDim2.new(0.5,-384,0.5,-208),
-        T.Background, 0.05)
-    MainFrame.Name = "MainFrame"
-    corner(MainFrame, 9)
-    local mainStroke = stroke(MainFrame, T.Shadow, 1.5)
-
-    -- Drop shadow
-    local Shadow = newFrame(ScreenGui,
-        UDim2.new(0,790,0,430),
-        UDim2.new(0.5,-395,0.5,-215),
-        T.Shadow, 0.4)
+    -- ── Shadow ────────────────────────────────────────────────
+    local Shadow = mkFrame(ScreenGui,
+        UDim2.new(0,790,0,430), UDim2.new(0.5,-395,0.5,-215), T.Shadow, 0.4)
     Shadow.ZIndex = 0
     corner(Shadow, 12)
 
-    -- ── Topbar (guiname area) ─────────────────────────────────
-    local Topbar = newFrame(MainFrame,
-        UDim2.new(1,0,0,50),
-        UDim2.new(0,0,0,0),
-        T.Topbar, 0)
+    -- ── Main Frame ────────────────────────────────────────────
+    local MainFrame = mkFrame(ScreenGui,
+        UDim2.new(0,768,0,417), UDim2.new(0.5,-384,0.5,-208), T.Background, 0.05)
+    MainFrame.Name = "MainFrame"
+    corner(MainFrame, 9)
+    local mainStroke = mkStroke(MainFrame, T.Shadow, 1.5)
+
+    -- ── Topbar ────────────────────────────────────────────────
+    local Topbar = mkFrame(MainFrame, UDim2.new(1,0,0,50), UDim2.new(0,0,0,0), T.Topbar, 0)
     Topbar.Name = "Topbar"
     corner(Topbar, 9)
-    -- fill bottom corners of topbar
-    local TopbarBottom = newFrame(MainFrame,
-        UDim2.new(1,0,0,10),
-        UDim2.new(0,0,0,40),
-        T.Topbar, 0)
-    TopbarBottom.Name = "TopbarBottom"
+    local TopFill = mkFrame(MainFrame, UDim2.new(1,0,0,10), UDim2.new(0,0,0,40), T.Topbar, 0)
 
     makeDraggable(MainFrame, Topbar)
 
-    -- Window title
-    local TitleLabel = newLabel(Topbar, windowName, 16, T.TextColor, Enum.Font.GothamBold)
+    local TitleLabel = mkLabel(Topbar, windowName, 16, T.TextColor, Enum.Font.GothamBold)
     TitleLabel.Size     = UDim2.new(1,-130,1,0)
     TitleLabel.Position = UDim2.new(0,14,0,0)
-    TitleLabel.Name     = "Title"
 
-    -- Info label (positioned like sample_ui's scriptinfo but inside topbar)
-    local InfoLabel = newLabel(Topbar, windowInfo, 12, T.TextColor, Enum.Font.Gotham)
-    InfoLabel.Size         = UDim2.new(0,300,1,0)
-    InfoLabel.Position     = UDim2.new(0,14,0,20)
-    InfoLabel.TextTransparency = 0.35
-    InfoLabel.Name         = "Info"
+    local InfoLabel = mkLabel(Topbar, windowInfo, 12, T.TextColor, Enum.Font.Gotham)
+    InfoLabel.Size             = UDim2.new(0,300,0,14)
+    InfoLabel.Position         = UDim2.new(0,14,1,-18)
+    InfoLabel.TextTransparency = 0.4
 
-    -- Close button
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Name            = "CloseBtn"
-    CloseBtn.Parent          = Topbar
-    CloseBtn.Size            = UDim2.new(0,30,0,30)
-    CloseBtn.Position        = UDim2.new(1,-40,0.5,-15)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
-    CloseBtn.BorderSizePixel  = 0
-    CloseBtn.Text             = "×"
-    CloseBtn.TextColor3       = Color3.fromRGB(255,255,255)
-    CloseBtn.TextSize         = 20
-    CloseBtn.Font             = Enum.Font.GothamBold
-    corner(CloseBtn, 6)
-
-    -- Minimize/hide button
     local MinBtn = Instance.new("TextButton")
-    MinBtn.Name             = "MinBtn"
     MinBtn.Parent           = Topbar
     MinBtn.Size             = UDim2.new(0,30,0,30)
     MinBtn.Position         = UDim2.new(1,-76,0.5,-15)
@@ -410,1511 +395,1047 @@ function UTGLibrary:CreateWindow(config)
     MinBtn.Font             = Enum.Font.GothamBold
     corner(MinBtn, 6)
 
-    -- ── Left sidebar (partsfeature = tab list) ────────────────
-    local Sidebar = newFrame(MainFrame,
-        UDim2.new(0,120,0,334),
-        UDim2.new(0,14,0,64),
-        T.TabBackground, 0.3)
-    Sidebar.Name = "Sidebar"
-    corner(Sidebar, 8)
-    stroke(Sidebar, T.TabStroke, 1)
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Parent           = Topbar
+    CloseBtn.Size             = UDim2.new(0,30,0,30)
+    CloseBtn.Position         = UDim2.new(1,-40,0.5,-15)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
+    CloseBtn.BorderSizePixel  = 0
+    CloseBtn.Text             = "x"
+    CloseBtn.TextColor3       = Color3.fromRGB(255,255,255)
+    CloseBtn.TextSize         = 18
+    CloseBtn.Font             = Enum.Font.GothamBold
+    corner(CloseBtn, 6)
 
-    -- Accent scrollbar line (from sample_ui)
-    local SidebarLine = newFrame(MainFrame,
-        UDim2.new(0,4,0,334),
-        UDim2.new(0,7,0,64),
-        T.SliderProgress, 0)
-    SidebarLine.Name = "SidebarLine"
+    -- ── Sidebar ───────────────────────────────────────────────
+    local Sidebar = mkFrame(MainFrame, UDim2.new(0,120,0,334), UDim2.new(0,14,0,64), T.TabBackground, 0.3)
+    corner(Sidebar, 8)
+    mkStroke(Sidebar, T.TabStroke, 1)
+
+    local SidebarLine = mkFrame(MainFrame, UDim2.new(0,4,0,334), UDim2.new(0,7,0,64), T.SliderProgress, 0)
     corner(SidebarLine, 4)
 
-    -- Tab button list
     local TabList = Instance.new("ScrollingFrame")
-    TabList.Parent              = Sidebar
-    TabList.Size                = UDim2.new(1,0,1,0)
-    TabList.Position            = UDim2.new(0,0,0,0)
+    TabList.Parent                 = Sidebar
+    TabList.Size                   = UDim2.new(1,0,1,0)
     TabList.BackgroundTransparency = 1
-    TabList.BorderSizePixel     = 0
-    TabList.ScrollBarThickness  = 2
-    TabList.ScrollBarImageColor3 = T.SliderProgress
-    TabList.CanvasSize          = UDim2.new(0,0,0,0)
-    TabList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    TabList.BorderSizePixel        = 0
+    TabList.ScrollBarThickness     = 2
+    TabList.ScrollBarImageColor3   = T.SliderProgress
+    TabList.CanvasSize             = UDim2.new(0,0,0,0)
+    -- FIX: AutomaticCanvasSize wrapped in pcall for old executors
+    pcall(function() TabList.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
 
     local TabListLayout = Instance.new("UIListLayout")
-    TabListLayout.Parent        = TabList
-    TabListLayout.SortOrder     = Enum.SortOrder.LayoutOrder
-    TabListLayout.Padding       = UDim.new(0,4)
+    TabListLayout.Parent    = TabList
+    TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    TabListLayout.Padding   = UDim.new(0,4)
 
-    local TabListPadding = Instance.new("UIPadding")
-    TabListPadding.Parent      = TabList
-    TabListPadding.PaddingTop  = UDim.new(0,6)
-    TabListPadding.PaddingLeft = UDim.new(0,6)
-    TabListPadding.PaddingRight= UDim.new(0,6)
+    local TabListPad = Instance.new("UIPadding")
+    TabListPad.Parent       = TabList
+    TabListPad.PaddingTop   = UDim.new(0,6)
+    TabListPad.PaddingLeft  = UDim.new(0,6)
+    TabListPad.PaddingRight = UDim.new(0,6)
 
-    -- ── Content area ──────────────────────────────────────────
-    local ContentContainer = newFrame(MainFrame,
-        UDim2.new(1,-144,0,334),
-        UDim2.new(0,140,0,64),
-        T.Background, 0.08)
-    ContentContainer.Name = "ContentContainer"
+    -- manual canvas fallback
+    TabListLayout.Changed:Connect(function()
+        pcall(function()
+            TabList.CanvasSize = UDim2.new(0,0,0, TabListLayout.AbsoluteContentSize.Y + 12)
+        end)
+    end)
+
+    -- ── Content ───────────────────────────────────────────────
+    local ContentContainer = mkFrame(MainFrame,
+        UDim2.new(1,-144,0,334), UDim2.new(0,140,0,64), T.Background, 0.08)
     corner(ContentContainer, 8)
-    stroke(ContentContainer, T.ElementStroke, 1)
+    mkStroke(ContentContainer, T.ElementStroke, 1)
 
-    -- ── Toggle button (floating, draggable) ───────────────────
+    -- ── Toggle Button ─────────────────────────────────────────
     local ToggleGui = Instance.new("ScreenGui")
-    ToggleGui.Name          = "UTGToggle"
-    ToggleGui.ResetOnSpawn  = false
-    ToggleGui.ZIndexBehavior= Enum.ZIndexBehavior.Sibling
-
-    if gethui then
-        ToggleGui.Parent = gethui()
-    else
-        pcall(function() ToggleGui.Parent = CoreGui end)
-        if not ToggleGui.Parent or ToggleGui.Parent ~= CoreGui then
-            ToggleGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-    end
+    ToggleGui.Name           = "UTGToggle"
+    ToggleGui.ResetOnSpawn   = false
+    ToggleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    safeParentGui(ToggleGui)
 
     local ToggleBtn = Instance.new("TextButton")
-    ToggleBtn.Name            = "ToggleBtn"
-    ToggleBtn.Parent          = ToggleGui
-    ToggleBtn.Size            = UDim2.new(0,50,0,50)
-    ToggleBtn.Position        = UDim2.new(0.5,-25,0.03,0)
+    ToggleBtn.Parent           = ToggleGui
+    ToggleBtn.Size             = UDim2.new(0,50,0,50)
+    ToggleBtn.Position         = UDim2.new(0.5,-25,0.03,0)
     ToggleBtn.BackgroundColor3 = T.Topbar
     ToggleBtn.BorderSizePixel  = 0
-    ToggleBtn.Text             = "☰"
+    ToggleBtn.Text             = "="
     ToggleBtn.TextColor3       = T.TextColor
     ToggleBtn.TextSize         = 20
     ToggleBtn.Font             = Enum.Font.GothamBold
     ToggleBtn.Visible          = false
     corner(ToggleBtn, 50)
-    stroke(ToggleBtn, T.TabStroke, 1.5)
-
+    mkStroke(ToggleBtn, T.TabStroke, 1.5)
     makeDraggable(ToggleBtn)
-
-    -- Default toggle position (for reset)
     local defaultTogglePos = UDim2.new(0.5,-25,0.03,0)
 
-    -- ── Notification Frame ────────────────────────────────────
+    -- ── Notifications ─────────────────────────────────────────
     local NotifGui = Instance.new("ScreenGui")
-    NotifGui.Name          = "UTGNotifications"
-    NotifGui.ResetOnSpawn  = false
-    NotifGui.ZIndexBehavior= Enum.ZIndexBehavior.Sibling
+    NotifGui.Name           = "UTGNotif"
+    NotifGui.ResetOnSpawn   = false
+    NotifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    safeParentGui(NotifGui)
 
-    if gethui then
-        NotifGui.Parent = gethui()
-    else
-        pcall(function() NotifGui.Parent = CoreGui end)
-        if not NotifGui.Parent or NotifGui.Parent ~= CoreGui then
-            NotifGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-    end
+    local NotifHolder = mkFrame(NotifGui, UDim2.new(0,260,1,0), UDim2.new(1,-270,0,0), Color3.new(0,0,0), 1)
+    local notifLayout = Instance.new("UIListLayout")
+    notifLayout.Parent            = NotifHolder
+    notifLayout.SortOrder         = Enum.SortOrder.LayoutOrder
+    notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    notifLayout.Padding           = UDim.new(0,6)
+    local notifPad = Instance.new("UIPadding")
+    notifPad.Parent        = NotifHolder
+    notifPad.PaddingBottom = UDim.new(0,10)
+    notifPad.PaddingRight  = UDim.new(0,6)
 
-    local NotifHolder = newFrame(NotifGui,
-        UDim2.new(0,260,1,0),
-        UDim2.new(1,-270,0,0),
-        Color3.new(0,0,0), 1)
-    NotifHolder.Name = "NotifHolder"
-    local NotifLayout = Instance.new("UIListLayout")
-    NotifLayout.Parent          = NotifHolder
-    NotifLayout.SortOrder       = Enum.SortOrder.LayoutOrder
-    NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-    NotifLayout.Padding         = UDim.new(0,6)
-    local NotifPad = Instance.new("UIPadding")
-    NotifPad.Parent = NotifHolder
-    NotifPad.PaddingBottom = UDim.new(0,10)
-    NotifPad.PaddingRight  = UDim.new(0,6)
+    -- ════════════════════════════════════════════════════════
+    --  THEME SYSTEM
+    -- ════════════════════════════════════════════════════════
+    local themeCallbacks = {}
 
-        --  THEME APPLY FUNCTION
-        local themeApplyCallbacks = {}
-    local currentTheme = T
-
-    local function applyTheme(newTheme)
-        currentTheme = newTheme
-        T = newTheme
-        -- Core frames
-        MainFrame.BackgroundColor3    = T.Background
-        mainStroke.Color              = T.Shadow
-        Shadow.BackgroundColor3       = T.Shadow
-        Topbar.BackgroundColor3       = T.Topbar
-        TopbarBottom.BackgroundColor3 = T.Topbar
-        TitleLabel.TextColor3         = T.TextColor
-        InfoLabel.TextColor3          = T.TextColor
-        Sidebar.BackgroundColor3      = T.TabBackground
-        SidebarLine.BackgroundColor3  = T.SliderProgress
+    local function applyTheme(newT)
+        currentTheme = newT
+        T = newT
+        MainFrame.BackgroundColor3        = T.Background
+        mainStroke.Color                  = T.Shadow
+        Shadow.BackgroundColor3           = T.Shadow
+        Topbar.BackgroundColor3           = T.Topbar
+        TopFill.BackgroundColor3          = T.Topbar
+        TitleLabel.TextColor3             = T.TextColor
+        InfoLabel.TextColor3              = T.TextColor
+        Sidebar.BackgroundColor3          = T.TabBackground
+        SidebarLine.BackgroundColor3      = T.SliderProgress
         ContentContainer.BackgroundColor3 = T.Background
-        ToggleBtn.BackgroundColor3    = T.Topbar
-        ToggleBtn.TextColor3          = T.TextColor
-        -- delegate to elements
-        for _, cb in pairs(themeApplyCallbacks) do pcall(cb, T) end
+        ToggleBtn.BackgroundColor3        = T.Topbar
+        ToggleBtn.TextColor3              = T.TextColor
+        for _, cb in pairs(themeCallbacks) do pcall(cb, T) end
     end
 
-        --  VISIBILITY TOGGLE
-        local guiVisible = true
+    -- ════════════════════════════════════════════════════════
+    --  VISIBILITY
+    -- ════════════════════════════════════════════════════════
+    local guiVisible = true
 
     local function setVisible(v)
-        guiVisible = v
-        tween(MainFrame, 0.25, {
+        guiVisible     = v
+        MainFrame.Visible = true
+        tw(MainFrame, 0.25, {
             Size = v and UDim2.new(0,768,0,417) or UDim2.new(0,768,0,0),
             BackgroundTransparency = v and 0.05 or 1
         })
-        MainFrame.Visible  = true
-        ToggleBtn.Visible  = not v
-        task.delay(0.25, function()
-            if not v then MainFrame.Visible = false end
-        end)
+        ToggleBtn.Visible = not v
+        if not v then
+            task.delay(0.26, function()
+                if not guiVisible then MainFrame.Visible = false end
+            end)
+        end
     end
 
-    MinBtn.MouseButton1Click:Connect(function()
-        setVisible(false)
-    end)
-
-    ToggleBtn.MouseButton1Click:Connect(function()
-        setVisible(true)
-    end)
-
+    MinBtn.MouseButton1Click:Connect(function() setVisible(false) end)
+    ToggleBtn.MouseButton1Click:Connect(function() setVisible(true) end)
     CloseBtn.MouseButton1Click:Connect(function()
-        -- destroy everything
-        ScreenGui:Destroy()
-        ToggleGui:Destroy()
-        NotifGui:Destroy()
+        pcall(function() ScreenGui:Destroy() end)
+        pcall(function() ToggleGui:Destroy() end)
+        pcall(function() NotifGui:Destroy() end)
         UTGLibrary.Flags = {}
     end)
 
-    -- Keybind toggle
+    -- FIX: compare i.KeyCode.Name (string) not Enum value
     UserInputService.InputBegan:Connect(function(i, gpe)
         if gpe then return end
-        if i.KeyCode == keybind then
-            setVisible(not guiVisible)
+        if i.UserInputType == Enum.UserInputType.Keyboard then
+            if i.KeyCode.Name == keybindName then
+                setVisible(not guiVisible)
+            end
         end
     end)
 
-        --  ELEMENT HELPER — card base
-        local function makeCard(parent, height)
-        local card = newFrame(parent, UDim2.new(1,-12,0,height or 36),
+    -- ════════════════════════════════════════════════════════
+    --  BASE CARD
+    -- ════════════════════════════════════════════════════════
+    local function makeCard(parent, height)
+        local c = mkFrame(parent, UDim2.new(1,-12,0,height or 36),
             UDim2.new(0,6,0,0), currentTheme.ElementBackground, 0)
-        corner(card, 6)
-        stroke(card, currentTheme.ElementStroke, 1)
-        return card
+        corner(c, 6)
+        mkStroke(c, currentTheme.ElementStroke, 1)
+        return c
     end
 
-        --  NOTIFY
-        function UTGLibrary:Notify(cfg)
-        cfg = cfg or {}
-        local title   = cfg.Title    or "Notification"
-        local content = cfg.Content  or ""
-        local dur     = cfg.Duration or 4
+    -- ════════════════════════════════════════════════════════
+    --  NOTIFY
+    -- ════════════════════════════════════════════════════════
+    function UTGLibrary:Notify(cfg2)
+        cfg2 = cfg2 or {}
+        local title   = cfg2.Title   or "Notification"
+        local content = cfg2.Content or ""
+        local dur     = cfg2.Duration or 4
 
-        local card = newFrame(NotifHolder, UDim2.new(1,0,0,64),
+        local card = mkFrame(NotifHolder, UDim2.new(1,0,0,64),
             UDim2.new(0,0,0,0), currentTheme.NotificationBackground, 0)
-        card.Name = "Notif"
         corner(card, 8)
-        stroke(card, currentTheme.ElementStroke, 1)
-        card.ClipsDescendants = true
+        mkStroke(card, currentTheme.ElementStroke, 1)
 
-        -- accent bar
-        local accent = newFrame(card, UDim2.new(0,3,1,0),
-            UDim2.new(0,0,0,0), currentTheme.SliderProgress, 0)
+        local accent = mkFrame(card, UDim2.new(0,3,1,0), UDim2.new(0,0,0,0), currentTheme.SliderProgress, 0)
         corner(accent, 2)
 
-        local tl = newLabel(card, title, 13, currentTheme.TextColor, Enum.Font.GothamBold)
+        local tl = mkLabel(card, title, 13, currentTheme.TextColor, Enum.Font.GothamBold)
         tl.Size     = UDim2.new(1,-16,0,18)
         tl.Position = UDim2.new(0,10,0,8)
 
-        local cl = newLabel(card, content, 12, currentTheme.TextColor, Enum.Font.Gotham)
-        cl.Size              = UDim2.new(1,-16,0,32)
-        cl.Position          = UDim2.new(0,10,0,26)
-        cl.TextWrapped       = true
-        cl.TextXAlignment    = Enum.TextXAlignment.Left
-        cl.TextYAlignment    = Enum.TextYAlignment.Top
-        cl.TextTransparency  = 0.2
+        local cl = mkLabel(card, content, 12, currentTheme.TextColor, Enum.Font.Gotham)
+        cl.Size             = UDim2.new(1,-16,0,32)
+        cl.Position         = UDim2.new(0,10,0,28)
+        cl.TextWrapped      = true
+        cl.TextYAlignment   = Enum.TextYAlignment.Top
+        cl.TextTransparency = 0.2
 
-        -- Animate in
         card.BackgroundTransparency = 1
         tl.TextTransparency         = 1
         cl.TextTransparency         = 1
-        tween(card, 0.35, {BackgroundTransparency = 0})
-        tween(tl,   0.35, {TextTransparency = 0})
-        tween(cl,   0.35, {TextTransparency = 0.2})
+        tw(card, 0.3, {BackgroundTransparency = 0})
+        tw(tl,   0.3, {TextTransparency = 0})
+        tw(cl,   0.3, {TextTransparency = 0.2})
 
         task.delay(dur, function()
-            tween(card, 0.35, {BackgroundTransparency = 1, Size = UDim2.new(1,0,0,0)})
-            tween(tl,   0.3,  {TextTransparency = 1})
-            tween(cl,   0.3,  {TextTransparency = 1})
-            task.wait(0.4)
+            tw(card, 0.3, {BackgroundTransparency = 1, Size = UDim2.new(1,0,0,0)})
+            tw(tl,   0.25, {TextTransparency = 1})
+            tw(cl,   0.25, {TextTransparency = 1})
+            task.wait(0.35)
             card:Destroy()
         end)
     end
 
-        --  TAB MANAGEMENT
-        local tabs      = {}
+    -- ════════════════════════════════════════════════════════
+    --  TAB MANAGEMENT
+    -- ════════════════════════════════════════════════════════
+    local tabs      = {}
     local activeTab = nil
 
-    local function selectTab(tabData)
-        if activeTab == tabData then return end
-        -- deselect old
+    local function selectTab(td)
+        if activeTab == td then return end
         if activeTab then
-            tween(activeTab.Button, 0.2, {
-                BackgroundColor3 = currentTheme.TabBackground,
-            })
-            activeTab.Button.TLabel.TextColor3 = currentTheme.TabTextColor
-            activeTab.Content.Visible = false
+            tw(activeTab.Btn, 0.18, {BackgroundColor3 = currentTheme.TabBackground})
+            activeTab.Btn.TL.TextColor3  = currentTheme.TabTextColor
+            activeTab.Scroll.Visible     = false
         end
-        activeTab = tabData
-        tween(tabData.Button, 0.2, {
-            BackgroundColor3 = currentTheme.TabBackgroundSelected,
-        })
-        tabData.Button.TLabel.TextColor3 = currentTheme.SelectedTabTextColor
-        tabData.Content.Visible = true
+        activeTab = td
+        tw(td.Btn, 0.18, {BackgroundColor3 = currentTheme.TabBackgroundSelected})
+        td.Btn.TL.TextColor3 = currentTheme.SelectedTabTextColor
+        td.Scroll.Visible    = true
     end
 
-        --  WINDOW API
-        local Window = {}
+    -- ════════════════════════════════════════════════════════
+    --  WINDOW API
+    -- ════════════════════════════════════════════════════════
+    local Window = {}
 
-    -- ModifyTheme
-    function Window:ModifyTheme(themeNameOrTable)
+    function Window:ModifyTheme(tn)
         local newT
-        if type(themeNameOrTable) == "string" then
-            newT = Themes[themeNameOrTable] or Themes.Default
-        elseif type(themeNameOrTable) == "table" then
-            -- merge with default
+        if type(tn) == "string" then
+            newT = Themes[tn] or Themes.Default
+        elseif type(tn) == "table" then
             newT = {}
-            for k, v in pairs(Themes.Default) do newT[k] = v end
-            for k, v in pairs(themeNameOrTable) do newT[k] = v end
-        else
-            return
-        end
+            for k,v in pairs(Themes.Default) do newT[k]=v end
+            for k,v in pairs(tn) do newT[k]=v end
+        else return end
         applyTheme(newT)
     end
 
-    -- UpdateInfo
     function Window:UpdateInfo(text)
-        InfoLabel.Text = text
+        InfoLabel.Text = tostring(text)
     end
 
-    -- LoadConfiguration
-    function Window:LoadConfiguration()
-        if not cfgSave.Enabled then return end
-        local data = loadConfig(cfgSave.FileName or windowName)
-        for flag, value in pairs(data) do
-            if UTGLibrary.Flags[flag] and UTGLibrary.Flags[flag].Set then
-                pcall(UTGLibrary.Flags[flag].Set, UTGLibrary.Flags[flag], value)
-            end
-        end
-    end
-
-    -- SaveConfiguration
     function Window:SaveConfiguration()
         if not cfgSave.Enabled then return end
         local data = {}
         for flag, elem in pairs(UTGLibrary.Flags) do
-            if elem.CurrentValue ~= nil then
-                data[flag] = elem.CurrentValue
-            end
+            if elem.CurrentValue ~= nil then data[flag] = elem.CurrentValue end
         end
         saveConfig(cfgSave.FileName or windowName, data)
     end
 
-    -- Destroy
+    function Window:LoadConfiguration()
+        if not cfgSave.Enabled then return end
+        local data = loadConfig(cfgSave.FileName or windowName)
+        for flag, val in pairs(data) do
+            if UTGLibrary.Flags[flag] and UTGLibrary.Flags[flag].Set then
+                pcall(UTGLibrary.Flags[flag].Set, UTGLibrary.Flags[flag], val)
+            end
+        end
+    end
+
     function Window:Destroy()
-        ScreenGui:Destroy()
-        ToggleGui:Destroy()
-        NotifGui:Destroy()
+        pcall(function() ScreenGui:Destroy() end)
+        pcall(function() ToggleGui:Destroy() end)
+        pcall(function() NotifGui:Destroy() end)
         UTGLibrary.Flags = {}
     end
 
-    -- ── CreateTab ─────────────────────────────────────────────
-    function Window:CreateTab(name, _icon)
-        -- Tab button in sidebar
+    -- ════════════════════════════════════════════════════════
+    --  CreateTab
+    -- ════════════════════════════════════════════════════════
+    function Window:CreateTab(name)
         local btn = Instance.new("TextButton")
-        btn.Name             = "TabBtn_"..name
         btn.Parent           = TabList
         btn.Size             = UDim2.new(1,0,0,30)
-        btn.BackgroundColor3  = currentTheme.TabBackground
-        btn.BorderSizePixel   = 0
-        btn.Text              = ""
-        btn.AutoButtonColor   = false
+        btn.BackgroundColor3 = currentTheme.TabBackground
+        btn.BorderSizePixel  = 0
+        btn.Text             = ""
+        btn.AutoButtonColor  = false
         corner(btn, 6)
-        stroke(btn, currentTheme.TabStroke, 1)
+        mkStroke(btn, currentTheme.TabStroke, 1)
 
-        local tl = newLabel(btn, name, 13, currentTheme.TabTextColor, Enum.Font.GothamMedium)
-        tl.Name = "TLabel"
-        tl.Size = UDim2.new(1,-8,1,0)
+        local tl = mkLabel(btn, name, 13, currentTheme.TabTextColor, Enum.Font.GothamMedium)
+        tl.Name     = "TL"
+        tl.Size     = UDim2.new(1,-8,1,0)
         tl.Position = UDim2.new(0,8,0,0)
         tl.TextXAlignment = Enum.TextXAlignment.Left
 
-        -- Content scroll frame
-        local contentScroll = Instance.new("ScrollingFrame")
-        contentScroll.Name                  = "Content_"..name
-        contentScroll.Parent                = ContentContainer
-        contentScroll.Size                  = UDim2.new(1,0,1,0)
-        contentScroll.Position              = UDim2.new(0,0,0,0)
-        contentScroll.BackgroundTransparency= 1
-        contentScroll.BorderSizePixel       = 0
-        contentScroll.ScrollBarThickness    = 3
-        contentScroll.ScrollBarImageColor3  = currentTheme.SliderProgress
-        contentScroll.CanvasSize            = UDim2.new(0,0,0,0)
-        contentScroll.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-        contentScroll.Visible               = false
-        contentScroll.ClipsDescendants      = true
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Name                    = "Scroll_"..name
+        scroll.Parent                  = ContentContainer
+        scroll.Size                    = UDim2.new(1,0,1,0)
+        scroll.BackgroundTransparency  = 1
+        scroll.BorderSizePixel         = 0
+        scroll.ScrollBarThickness      = 3
+        scroll.ScrollBarImageColor3    = currentTheme.SliderProgress
+        scroll.CanvasSize              = UDim2.new(0,0,0,0)
+        scroll.Visible                 = false
+        scroll.ClipsDescendants        = true
+        pcall(function() scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
 
         local layout = Instance.new("UIListLayout")
-        layout.Parent    = contentScroll
+        layout.Parent    = scroll
         layout.SortOrder = Enum.SortOrder.LayoutOrder
         layout.Padding   = UDim.new(0,5)
 
         local pad = Instance.new("UIPadding")
-        pad.Parent       = contentScroll
-        pad.PaddingTop   = UDim.new(0,8)
-        pad.PaddingLeft  = UDim.new(0,6)
-        pad.PaddingRight = UDim.new(0,6)
-        pad.PaddingBottom= UDim.new(0,8)
+        pad.Parent        = scroll
+        pad.PaddingTop    = UDim.new(0,8)
+        pad.PaddingLeft   = UDim.new(0,6)
+        pad.PaddingRight  = UDim.new(0,6)
+        pad.PaddingBottom = UDim.new(0,8)
 
-        local tabData = { Button = btn, Content = contentScroll }
-        table.insert(tabs, tabData)
-
-        btn.MouseButton1Click:Connect(function()
-            selectTab(tabData)
+        layout.Changed:Connect(function()
+            pcall(function()
+                scroll.CanvasSize = UDim2.new(0,0,0, layout.AbsoluteContentSize.Y + 20)
+            end)
         end)
 
-        -- Auto-select first tab
-        if #tabs == 1 then
-            selectTab(tabData)
-        end
+        local td = { Btn = btn, Scroll = scroll }
+        table.insert(tabs, td)
+        btn.MouseButton1Click:Connect(function() selectTab(td) end)
+        if #tabs == 1 then selectTab(td) end
 
-        -- ── TAB API ───────────────────────────────────────────
+        -- ── ELEMENT METHODS ───────────────────────────────────
         local Tab = {}
 
-        -- ── CreateSection ──────────────────────────────────────
-        function Tab:CreateSection(sectionName)
-            local sec = newFrame(contentScroll, UDim2.new(1,-12,0,24),
-                UDim2.new(0,6,0,0), currentTheme.SecondaryElementBackground, 0.3)
-            sec.LayoutOrder = 1
+        function Tab:CreateSection(sName)
+            local sec = mkFrame(scroll, UDim2.new(1,-12,0,22), UDim2.new(0,6,0,0),
+                currentTheme.SecondaryElementBackground, 0.35)
+            sec.LayoutOrder = 0
             corner(sec, 4)
-
-            local sl = newLabel(sec, sectionName, 11, currentTheme.TextColor, Enum.Font.GothamBold)
+            local sl = mkLabel(sec, sName, 11, currentTheme.TextColor, Enum.Font.GothamBold)
             sl.Size     = UDim2.new(1,-10,1,0)
             sl.Position = UDim2.new(0,8,0,0)
             sl.TextTransparency = 0.25
-
-            -- divider line
-            local line = newFrame(sec, UDim2.new(0.85,0,0,1),
-                UDim2.new(0.075,0,1,-1), currentTheme.ElementStroke, 0)
-            _ = line
-
-            table.insert(themeApplyCallbacks, function(nt)
-                sec.BackgroundColor3  = nt.SecondaryElementBackground
-                sl.TextColor3         = nt.TextColor
-                line.BackgroundColor3 = nt.ElementStroke
+            table.insert(themeCallbacks, function(nt)
+                sec.BackgroundColor3 = nt.SecondaryElementBackground
+                sl.TextColor3        = nt.TextColor
             end)
-
-            local Section = {}
-            function Section:Set(newName)
-                sl.Text = newName
-            end
-            return Section
+            local S = {}
+            function S:Set(n) sl.Text = n end
+            return S
         end
 
-        -- ── CreateButton ───────────────────────────────────────
-        function Tab:CreateButton(cfg)
-            cfg = cfg or {}
-            local card = makeCard(contentScroll, 36)
-            card.LayoutOrder = 2
-
-            local label = newLabel(card, cfg.Name or "Button", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
+        function Tab:CreateButton(bcfg)
+            bcfg = bcfg or {}
+            local card = makeCard(scroll, 36)
+            card.LayoutOrder = 1
+            local label = mkLabel(card, bcfg.Name or "Button", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
             label.Size     = UDim2.new(1,-16,1,0)
             label.Position = UDim2.new(0,10,0,0)
-
-            -- Click indicator (right arrow)
-            local arr = newLabel(card, "›", 18, currentTheme.TextColor, Enum.Font.GothamBold)
+            local arr = mkLabel(card, ">", 16, currentTheme.TextColor, Enum.Font.GothamBold)
             arr.Size         = UDim2.new(0,20,1,0)
-            arr.Position     = UDim2.new(1,-26,0,0)
+            arr.Position     = UDim2.new(1,-24,0,0)
             arr.TextXAlignment = Enum.TextXAlignment.Right
-
-            -- Make the card clickable
-            local clickRegion = Instance.new("TextButton")
-            clickRegion.Parent              = card
-            clickRegion.Size                = UDim2.new(1,0,1,0)
-            clickRegion.BackgroundTransparency = 1
-            clickRegion.Text                = ""
-            clickRegion.ZIndex              = card.ZIndex + 1
-
-            clickRegion.MouseEnter:Connect(function()
-                tween(card, 0.15, {BackgroundColor3 = currentTheme.ElementBackgroundHover})
+            local cr = Instance.new("TextButton")
+            cr.Parent = card
+            cr.Size   = UDim2.new(1,0,1,0)
+            cr.BackgroundTransparency = 1
+            cr.Text   = ""
+            cr.ZIndex = card.ZIndex+1
+            cr.MouseEnter:Connect(function() tw(card,0.15,{BackgroundColor3=currentTheme.ElementBackgroundHover}) end)
+            cr.MouseLeave:Connect(function() tw(card,0.15,{BackgroundColor3=currentTheme.ElementBackground}) end)
+            cr.MouseButton1Click:Connect(function()
+                tw(card,0.07,{BackgroundColor3=currentTheme.SliderProgress})
+                task.delay(0.1,function() tw(card,0.15,{BackgroundColor3=currentTheme.ElementBackground}) end)
+                if bcfg.Callback then pcall(bcfg.Callback) end
             end)
-            clickRegion.MouseLeave:Connect(function()
-                tween(card, 0.15, {BackgroundColor3 = currentTheme.ElementBackground})
+            table.insert(themeCallbacks, function(nt)
+                card.BackgroundColor3 = nt.ElementBackground
+                label.TextColor3      = nt.TextColor
+                arr.TextColor3        = nt.TextColor
             end)
-            clickRegion.MouseButton1Click:Connect(function()
-                tween(card, 0.07, {BackgroundColor3 = currentTheme.SliderProgress})
-                task.delay(0.07, function()
-                    tween(card, 0.15, {BackgroundColor3 = currentTheme.ElementBackgroundHover})
-                end)
-                if cfg.Callback then pcall(cfg.Callback) end
-            end)
-
-            table.insert(themeApplyCallbacks, function(nt)
-                card.BackgroundColor3  = nt.ElementBackground
-                label.TextColor3       = nt.TextColor
-                arr.TextColor3         = nt.TextColor
-            end)
-
-            local Btn = {}
-            function Btn:Set(newName) label.Text = newName end
-            return Btn
+            local B = {}
+            function B:Set(n) label.Text = n end
+            return B
         end
 
-        -- ── CreateToggle ───────────────────────────────────────
-        function Tab:CreateToggle(cfg)
-            cfg = cfg or {}
-            local flag    = cfg.Flag
-            local current = cfg.CurrentValue or false
+        function Tab:CreateToggle(tcfg)
+            tcfg = tcfg or {}
+            local flag    = tcfg.Flag
+            local current = tcfg.CurrentValue or false
             if flag and savedFlags[flag] ~= nil then current = savedFlags[flag] end
 
-            local card = makeCard(contentScroll, 36)
-            card.LayoutOrder = 3
-
-            local label = newLabel(card, cfg.Name or "Toggle", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
+            local card = makeCard(scroll, 36)
+            card.LayoutOrder = 2
+            local label = mkLabel(card, tcfg.Name or "Toggle", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
             label.Size     = UDim2.new(1,-60,1,0)
             label.Position = UDim2.new(0,10,0,0)
 
-            -- Track background
-            local track = newFrame(card, UDim2.new(0,40,0,22),
-                UDim2.new(1,-50,0.5,-11),
+            local track = mkFrame(card, UDim2.new(0,40,0,22), UDim2.new(1,-50,0.5,-11),
                 current and currentTheme.ToggleEnabled or currentTheme.ToggleDisabled, 0)
             corner(track, 20)
-            stroke(track,
-                current and currentTheme.ToggleEnabledStroke or currentTheme.ToggleDisabledStroke, 1.5)
-            local trackStroke = track:FindFirstChildOfClass("UIStroke")
-
-            -- Knob
-            local knob = newFrame(track, UDim2.new(0,16,0,16),
-                UDim2.new(0, current and 20 or 2, 0.5,-8),
-                Color3.fromRGB(255,255,255), 0)
+            local trkS = mkStroke(track, current and currentTheme.ToggleEnabledStroke or currentTheme.ToggleDisabledStroke, 1.5)
+            local knob = mkFrame(track, UDim2.new(0,16,0,16),
+                UDim2.new(0, current and 22 or 2, 0.5,-8), Color3.fromRGB(255,255,255), 0)
             corner(knob, 20)
 
-            local function applyToggle(val)
-                current = val
-                tween(track, 0.2, {
-                    BackgroundColor3 = val and currentTheme.ToggleEnabled or currentTheme.ToggleDisabled
-                })
-                tween(trackStroke, 0.2, {
-                    Color = val and currentTheme.ToggleEnabledStroke or currentTheme.ToggleDisabledStroke
-                })
-                tween(knob, 0.2, {
-                    Position = UDim2.new(0, val and 22 or 2, 0.5,-8)
-                })
-                if flag then
-                    UTGLibrary.Flags[flag] = UTGLibrary.Flags[flag] or {}
-                    UTGLibrary.Flags[flag].CurrentValue = val
-                    if cfgSave.Enabled then Window:SaveConfiguration() end
-                end
-                if cfg.Callback then pcall(cfg.Callback, val) end
-            end
-
-            applyToggle(current)
-
-            local clickRegion = Instance.new("TextButton")
-            clickRegion.Parent              = card
-            clickRegion.Size                = UDim2.new(1,0,1,0)
-            clickRegion.BackgroundTransparency = 1
-            clickRegion.Text                = ""
-            clickRegion.ZIndex              = card.ZIndex + 1
-            clickRegion.MouseButton1Click:Connect(function()
-                applyToggle(not current)
-            end)
-            clickRegion.MouseEnter:Connect(function()
-                tween(card, 0.15, {BackgroundColor3 = currentTheme.ElementBackgroundHover})
-            end)
-            clickRegion.MouseLeave:Connect(function()
-                tween(card, 0.15, {BackgroundColor3 = currentTheme.ElementBackground})
-            end)
-
-            table.insert(themeApplyCallbacks, function(nt)
-                card.BackgroundColor3  = nt.ElementBackground
-                label.TextColor3       = nt.TextColor
-                track.BackgroundColor3 = current and nt.ToggleEnabled or nt.ToggleDisabled
-                trackStroke.Color      = current and nt.ToggleEnabledStroke or nt.ToggleDisabledStroke
-            end)
-
-            local Toggle = { CurrentValue = current }
-            function Toggle:Set(val)
-                applyToggle(val)
-                Toggle.CurrentValue = val
-            end
-
-            if flag then
-                UTGLibrary.Flags[flag] = Toggle
-            end
-            return Toggle
-        end
-
-        -- ── CreateSlider ───────────────────────────────────────
-        function Tab:CreateSlider(cfg)
-            cfg = cfg or {}
-            local flag    = cfg.Flag
-            local range   = cfg.Range or {0,100}
-            local inc     = cfg.Increment or 1
-            local suffix  = cfg.Suffix or ""
-            local current = cfg.CurrentValue or range[1]
-            if flag and savedFlags[flag] ~= nil then current = savedFlags[flag] end
-            current = math.clamp(current, range[1], range[2])
-
-            local card = makeCard(contentScroll, 52)
-            card.LayoutOrder = 4
-
-            -- Name + value
-            local label = newLabel(card, cfg.Name or "Slider", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
-            label.Size     = UDim2.new(1,-80,0,20)
-            label.Position = UDim2.new(0,10,0,4)
-
-            local valLabel = newLabel(card, tostring(current)..(suffix~=""and" "..suffix or ""), 12,
-                currentTheme.TextColor, Enum.Font.Gotham)
-            valLabel.Size     = UDim2.new(0,70,0,20)
-            valLabel.Position = UDim2.new(1,-76,0,4)
-            valLabel.TextXAlignment = Enum.TextXAlignment.Right
-
-            -- Track
-            local trackBg = newFrame(card, UDim2.new(1,-20,0,6),
-                UDim2.new(0,10,0,35), currentTheme.SecondaryElementBackground, 0)
-            corner(trackBg, 3)
-            stroke(trackBg, currentTheme.SecondaryElementStroke, 1)
-
-            -- Fill
-            local fill = newFrame(trackBg, UDim2.new(0,0,1,0),
-                UDim2.new(0,0,0,0), currentTheme.SliderProgress, 0)
-            corner(fill, 3)
-
-            -- Knob
-            local sliderKnob = newFrame(trackBg, UDim2.new(0,12,0,12),
-                UDim2.new(0,-6,0.5,-6), Color3.fromRGB(255,255,255), 0)
-            corner(sliderKnob, 20)
-            stroke(sliderKnob, currentTheme.SliderStroke, 1.5)
-
-            local function pctFromVal(v)
-                return (v - range[1]) / (range[2] - range[1])
-            end
-            local function valFromPct(p)
-                local raw = range[1] + p * (range[2] - range[1])
-                local stepped = math.round(raw / inc) * inc
-                return math.clamp(stepped, range[1], range[2])
-            end
-            local function applySlider(v)
+            local function setTog(v)
                 current = v
-                local pct = pctFromVal(v)
-                tween(fill,       0.1, {Size = UDim2.new(pct,0,1,0)})
-                tween(sliderKnob, 0.1, {Position = UDim2.new(pct,-6,0.5,-6)})
-                valLabel.Text = string.format(
-                    (inc < 1 and "%.1f" or "%d"), v)..(suffix~=""and" "..suffix or "")
+                tw(track, 0.2, {BackgroundColor3 = v and currentTheme.ToggleEnabled or currentTheme.ToggleDisabled})
+                tw(trkS,  0.2, {Color = v and currentTheme.ToggleEnabledStroke or currentTheme.ToggleDisabledStroke})
+                tw(knob,  0.2, {Position = UDim2.new(0, v and 22 or 2, 0.5,-8)})
                 if flag then
-                    UTGLibrary.Flags[flag] = UTGLibrary.Flags[flag] or {}
+                    if not UTGLibrary.Flags[flag] then UTGLibrary.Flags[flag]={} end
                     UTGLibrary.Flags[flag].CurrentValue = v
                     if cfgSave.Enabled then Window:SaveConfiguration() end
                 end
-                if cfg.Callback then pcall(cfg.Callback, v) end
+                if tcfg.Callback then pcall(tcfg.Callback, v) end
             end
+            setTog(current)
 
-            applySlider(current)
+            local cr = Instance.new("TextButton")
+            cr.Parent = card
+            cr.Size   = UDim2.new(1,0,1,0)
+            cr.BackgroundTransparency = 1
+            cr.Text   = ""
+            cr.ZIndex = card.ZIndex+1
+            cr.MouseButton1Click:Connect(function() setTog(not current) end)
+            cr.MouseEnter:Connect(function() tw(card,0.15,{BackgroundColor3=currentTheme.ElementBackgroundHover}) end)
+            cr.MouseLeave:Connect(function() tw(card,0.15,{BackgroundColor3=currentTheme.ElementBackground}) end)
 
-            -- Drag logic
-            local draggingSlider = false
-            local clickRegion = Instance.new("TextButton")
-            clickRegion.Parent              = trackBg
-            clickRegion.Size                = UDim2.new(1,0,0,20)
-            clickRegion.Position            = UDim2.new(0,0,0.5,-10)
-            clickRegion.BackgroundTransparency = 1
-            clickRegion.Text                = ""
-            clickRegion.ZIndex              = card.ZIndex + 2
+            table.insert(themeCallbacks, function(nt)
+                card.BackgroundColor3  = nt.ElementBackground
+                label.TextColor3       = nt.TextColor
+                track.BackgroundColor3 = current and nt.ToggleEnabled or nt.ToggleDisabled
+                trkS.Color             = current and nt.ToggleEnabledStroke or nt.ToggleDisabledStroke
+            end)
 
-            clickRegion.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 or
-                   i.UserInputType == Enum.UserInputType.Touch then
-                    draggingSlider = true
+            local Tog = { CurrentValue = current }
+            function Tog:Set(v) setTog(v); Tog.CurrentValue = v end
+            if flag then UTGLibrary.Flags[flag] = Tog end
+            return Tog
+        end
+
+        function Tab:CreateSlider(scfg)
+            scfg   = scfg or {}
+            local flag    = scfg.Flag
+            local range   = scfg.Range or {0,100}
+            local inc     = scfg.Increment or 1
+            local suffix  = scfg.Suffix or ""
+            local current = scfg.CurrentValue or range[1]
+            if flag and savedFlags[flag] ~= nil then current = savedFlags[flag] end
+            current = math.clamp(current, range[1], range[2])
+
+            local card = makeCard(scroll, 54)
+            card.LayoutOrder = 3
+            local label = mkLabel(card, scfg.Name or "Slider", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
+            label.Size     = UDim2.new(1,-80,0,18)
+            label.Position = UDim2.new(0,10,0,4)
+            local valL = mkLabel(card, "", 12, currentTheme.TextColor, Enum.Font.Gotham)
+            valL.Size     = UDim2.new(0,68,0,18)
+            valL.Position = UDim2.new(1,-74,0,4)
+            valL.TextXAlignment = Enum.TextXAlignment.Right
+
+            local trackBg = mkFrame(card, UDim2.new(1,-20,0,6), UDim2.new(0,10,0,36),
+                currentTheme.SecondaryElementBackground, 0)
+            corner(trackBg, 3)
+            mkStroke(trackBg, currentTheme.SecondaryElementStroke, 1)
+            local fill = mkFrame(trackBg, UDim2.new(0,0,1,0), UDim2.new(0,0,0,0), currentTheme.SliderProgress, 0)
+            corner(fill, 3)
+            local sknob = mkFrame(trackBg, UDim2.new(0,12,0,12), UDim2.new(0,-6,0.5,-6), Color3.fromRGB(255,255,255), 0)
+            corner(sknob, 20)
+            local sknobS = mkStroke(sknob, currentTheme.SliderStroke, 1.5)
+
+            local function pct(v) return (v-range[1])/(range[2]-range[1]) end
+            local function fromPct(p)
+                local raw = range[1] + p*(range[2]-range[1])
+                return math.clamp(math.round(raw/inc)*inc, range[1], range[2])
+            end
+            local function applyS(v)
+                current = v
+                local p = pct(v)
+                tw(fill,  0.1, {Size = UDim2.new(p,0,1,0)})
+                tw(sknob, 0.1, {Position = UDim2.new(p,-6,0.5,-6)})
+                local fmt = (inc<1) and string.format("%.1f",v) or tostring(math.floor(v))
+                valL.Text = fmt..(suffix~=""and" "..suffix or "")
+                if flag then
+                    if not UTGLibrary.Flags[flag] then UTGLibrary.Flags[flag]={} end
+                    UTGLibrary.Flags[flag].CurrentValue = v
+                    if cfgSave.Enabled then Window:SaveConfiguration() end
+                end
+                if scfg.Callback then pcall(scfg.Callback, v) end
+            end
+            applyS(current)
+
+            local dragging = false
+            local cr = Instance.new("TextButton")
+            cr.Parent = trackBg
+            cr.Size   = UDim2.new(1,0,0,22)
+            cr.Position = UDim2.new(0,0,0.5,-11)
+            cr.BackgroundTransparency = 1
+            cr.Text   = ""
+            cr.ZIndex = trackBg.ZIndex+2
+            cr.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1
+                or i.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true
                 end
             end)
             UserInputService.InputEnded:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 or
-                   i.UserInputType == Enum.UserInputType.Touch then
-                    draggingSlider = false
+                if i.UserInputType == Enum.UserInputType.MouseButton1
+                or i.UserInputType == Enum.UserInputType.Touch then
+                    dragging = false
                 end
             end)
             UserInputService.InputChanged:Connect(function(i)
-                if draggingSlider and
-                   (i.UserInputType == Enum.UserInputType.MouseMovement or
-                    i.UserInputType == Enum.UserInputType.Touch) then
-                    local absPos  = trackBg.AbsolutePosition
-                    local absSize = trackBg.AbsoluteSize
-                    local relX    = (i.Position.X - absPos.X) / absSize.X
-                    applySlider(valFromPct(math.clamp(relX, 0, 1)))
+                if not dragging then return end
+                if i.UserInputType == Enum.UserInputType.MouseMovement
+                or i.UserInputType == Enum.UserInputType.Touch then
+                    local relX = math.clamp((i.Position.X - trackBg.AbsolutePosition.X)/trackBg.AbsoluteSize.X, 0, 1)
+                    applyS(fromPct(relX))
                 end
             end)
-            clickRegion.MouseButton1Click:Connect(function()
-                local absPos  = trackBg.AbsolutePosition
-                local absSize = trackBg.AbsoluteSize
-                local relX    = (Mouse.X - absPos.X) / absSize.X
-                applySlider(valFromPct(math.clamp(relX, 0, 1)))
+
+            table.insert(themeCallbacks, function(nt)
+                card.BackgroundColor3    = nt.ElementBackground
+                label.TextColor3         = nt.TextColor
+                valL.TextColor3          = nt.TextColor
+                trackBg.BackgroundColor3 = nt.SecondaryElementBackground
+                fill.BackgroundColor3    = nt.SliderProgress
+                sknobS.Color             = nt.SliderStroke
             end)
 
-            table.insert(themeApplyCallbacks, function(nt)
-                card.BackgroundColor3   = nt.ElementBackground
-                label.TextColor3        = nt.TextColor
-                valLabel.TextColor3     = nt.TextColor
-                trackBg.BackgroundColor3= nt.SecondaryElementBackground
-                fill.BackgroundColor3   = nt.SliderProgress
-                sliderKnob:FindFirstChildOfClass("UIStroke").Color = nt.SliderStroke
-            end)
-
-            local Slider = { CurrentValue = current }
-            function Slider:Set(v)
-                applySlider(math.clamp(v, range[1], range[2]))
-                Slider.CurrentValue = current
+            local Sld = { CurrentValue = current }
+            function Sld:Set(v)
+                applyS(math.clamp(v, range[1], range[2]))
+                Sld.CurrentValue = current
             end
-
-            if flag then UTGLibrary.Flags[flag] = Slider end
-            return Slider
+            if flag then UTGLibrary.Flags[flag] = Sld end
+            return Sld
         end
 
-        -- ── CreateInput ────────────────────────────────────────
-        function Tab:CreateInput(cfg)
-            cfg = cfg or {}
-            local flag    = cfg.Flag
-            local current = cfg.CurrentValue or ""
+        function Tab:CreateInput(icfg)
+            icfg = icfg or {}
+            local flag    = icfg.Flag
+            local current = icfg.CurrentValue or ""
             if flag and savedFlags[flag] then current = savedFlags[flag] end
 
-            local card = makeCard(contentScroll, 52)
-            card.LayoutOrder = 5
-
-            local label = newLabel(card, cfg.Name or "Input", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
+            local card = makeCard(scroll, 54)
+            card.LayoutOrder = 4
+            local label = mkLabel(card, icfg.Name or "Input", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
             label.Size     = UDim2.new(1,-16,0,18)
             label.Position = UDim2.new(0,10,0,4)
-
             local box = Instance.new("TextBox")
             box.Parent           = card
-            box.Size             = UDim2.new(1,-20,0,22)
+            box.Size             = UDim2.new(1,-20,0,24)
             box.Position         = UDim2.new(0,10,0,24)
-            box.BackgroundColor3  = currentTheme.InputBackground
-            box.BorderSizePixel   = 0
-            box.Text              = current
-            box.PlaceholderText   = cfg.PlaceholderText or ""
-            box.PlaceholderColor3 = currentTheme.PlaceholderColor
-            box.TextColor3        = currentTheme.TextColor
-            box.Font              = Enum.Font.Gotham
-            box.TextSize          = 12
-            box.ClearTextOnFocus  = false
+            box.BackgroundColor3 = currentTheme.InputBackground
+            box.BorderSizePixel  = 0
+            box.Text             = current
+            box.PlaceholderText  = icfg.PlaceholderText or ""
+            box.PlaceholderColor3= currentTheme.PlaceholderColor
+            box.TextColor3       = currentTheme.TextColor
+            box.Font             = Enum.Font.Gotham
+            box.TextSize         = 12
+            box.ClearTextOnFocus = false
             corner(box, 4)
-            stroke(box, currentTheme.InputStroke, 1)
-
-            box.FocusLost:Connect(function(enter)
+            local boxS = mkStroke(box, currentTheme.InputStroke, 1)
+            box.FocusLost:Connect(function()
                 current = box.Text
-                if cfg.RemoveTextAfterFocusLost then box.Text = "" end
+                if icfg.RemoveTextAfterFocusLost then box.Text = "" end
                 if flag then
-                    UTGLibrary.Flags[flag] = UTGLibrary.Flags[flag] or {}
+                    if not UTGLibrary.Flags[flag] then UTGLibrary.Flags[flag]={} end
                     UTGLibrary.Flags[flag].CurrentValue = current
                     if cfgSave.Enabled then Window:SaveConfiguration() end
                 end
-                if cfg.Callback then pcall(cfg.Callback, current) end
+                if icfg.Callback then pcall(icfg.Callback, current) end
             end)
-
-            table.insert(themeApplyCallbacks, function(nt)
+            table.insert(themeCallbacks, function(nt)
                 card.BackgroundColor3  = nt.ElementBackground
                 label.TextColor3       = nt.TextColor
                 box.BackgroundColor3   = nt.InputBackground
                 box.TextColor3         = nt.TextColor
                 box.PlaceholderColor3  = nt.PlaceholderColor
-                box:FindFirstChildOfClass("UIStroke").Color = nt.InputStroke
+                boxS.Color             = nt.InputStroke
             end)
-
-            local Input = { CurrentValue = current }
-            function Input:Set(v)
-                box.Text = v
-                current  = v
-                Input.CurrentValue = v
-            end
-
-            if flag then UTGLibrary.Flags[flag] = Input end
-            return Input
+            local Inp = { CurrentValue = current }
+            function Inp:Set(v) box.Text = v; current = v; Inp.CurrentValue = v end
+            if flag then UTGLibrary.Flags[flag] = Inp end
+            return Inp
         end
 
-        -- ── CreateDropdown ─────────────────────────────────────
-        function Tab:CreateDropdown(cfg)
-            cfg = cfg or {}
-            local flag    = cfg.Flag
-            local options = cfg.Options or {}
-            local multi   = cfg.MultipleOptions or false
-            local selected = cfg.CurrentOption or {options[1]}
+        function Tab:CreateDropdown(dcfg)
+            dcfg = dcfg or {}
+            local flag     = dcfg.Flag
+            local options  = dcfg.Options or {}
+            local multi    = dcfg.MultipleOptions or false
+            local selected = dcfg.CurrentOption or {options[1]}
             if flag and savedFlags[flag] then selected = savedFlags[flag] end
 
+            local iH = 28
+            local maxV = math.min(#options, 5)
             local collapsed = true
-            local itemHeight = 26
-            local maxItems   = math.min(#options, 5)
 
-            local card = makeCard(contentScroll, 44)
-            card.LayoutOrder = 6
+            local card = makeCard(scroll, 36)
+            card.LayoutOrder = 5
             card.ClipsDescendants = false
 
-            local label = newLabel(card, cfg.Name or "Dropdown", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
+            local label = mkLabel(card, dcfg.Name or "Dropdown", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
             label.Size     = UDim2.new(1,-90,1,0)
             label.Position = UDim2.new(0,10,0,0)
+            local selL = mkLabel(card, "", 12, currentTheme.TextColor, Enum.Font.Gotham)
+            selL.Size             = UDim2.new(0,80,1,0)
+            selL.Position         = UDim2.new(1,-92,0,0)
+            selL.TextXAlignment   = Enum.TextXAlignment.Right
+            local chev = mkLabel(card, "v", 14, currentTheme.TextColor, Enum.Font.GothamBold)
+            chev.Size     = UDim2.new(0,16,1,0)
+            chev.Position = UDim2.new(1,-18,0,0)
+            chev.TextXAlignment = Enum.TextXAlignment.Center
 
-            -- Selected display
-            local selLabel = newLabel(card, table.concat(selected, ", "), 12,
-                currentTheme.TextColor, Enum.Font.Gotham)
-            selLabel.Size     = UDim2.new(0,80,1,0)
-            selLabel.Position = UDim2.new(1,-92,0,0)
-            selLabel.TextXAlignment = Enum.TextXAlignment.Right
-
-            -- Chevron
-            local chevron = newLabel(card, "▾", 14, currentTheme.TextColor, Enum.Font.GothamBold)
-            chevron.Size     = UDim2.new(0,16,1,0)
-            chevron.Position = UDim2.new(1,-18,0,0)
-            chevron.TextXAlignment = Enum.TextXAlignment.Center
-
-            -- Dropdown list frame
-            local dropList = newFrame(card,
-                UDim2.new(1,0,0, itemHeight*maxItems+8),
-                UDim2.new(0,0,1,4),
+            local dropF = mkFrame(card, UDim2.new(1,0,0,iH*maxV+8), UDim2.new(0,0,1,4),
                 currentTheme.DropdownUnselected, 0)
-            dropList.ZIndex   = card.ZIndex + 10
-            dropList.Visible  = false
-            corner(dropList, 6)
-            stroke(dropList, currentTheme.ElementStroke, 1)
+            dropF.ZIndex  = card.ZIndex+10
+            dropF.Visible = false
+            corner(dropF, 6)
+            mkStroke(dropF, currentTheme.ElementStroke, 1)
 
-            local dropScroll = Instance.new("ScrollingFrame")
-            dropScroll.Parent              = dropList
-            dropScroll.Size                = UDim2.new(1,-4,1,-4)
-            dropScroll.Position            = UDim2.new(0,2,0,2)
-            dropScroll.BackgroundTransparency = 1
-            dropScroll.BorderSizePixel     = 0
-            dropScroll.ScrollBarThickness  = 2
-            dropScroll.ScrollBarImageColor3= currentTheme.SliderProgress
-            dropScroll.CanvasSize          = UDim2.new(0,0,0,0)
-            dropScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-            dropScroll.ZIndex              = dropList.ZIndex + 1
+            local dScroll = Instance.new("ScrollingFrame")
+            dScroll.Parent                 = dropF
+            dScroll.Size                   = UDim2.new(1,-4,1,-4)
+            dScroll.Position               = UDim2.new(0,2,0,2)
+            dScroll.BackgroundTransparency = 1
+            dScroll.BorderSizePixel        = 0
+            dScroll.ScrollBarThickness     = 2
+            dScroll.ScrollBarImageColor3   = currentTheme.SliderProgress
+            dScroll.CanvasSize             = UDim2.new(0,0,0,0)
+            dScroll.ZIndex                 = dropF.ZIndex+1
+            pcall(function() dScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
 
-            local dropLayout = Instance.new("UIListLayout")
-            dropLayout.Parent    = dropScroll
-            dropLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            dropLayout.Padding   = UDim.new(0,2)
+            local dLayout = Instance.new("UIListLayout")
+            dLayout.Parent    = dScroll
+            dLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            dLayout.Padding   = UDim.new(0,2)
+            dLayout.Changed:Connect(function()
+                pcall(function()
+                    dScroll.CanvasSize = UDim2.new(0,0,0, dLayout.AbsoluteContentSize.Y+4)
+                end)
+            end)
 
             local itemBtns = {}
-
-            local function updateDisplay()
-                selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "None"
+            local function updateSel()
+                selL.Text = #selected>0 and table.concat(selected,", ") or "None"
             end
-
-            local function buildItems()
-                for _, b in pairs(itemBtns) do b:Destroy() end
+            local function rebuildItems()
+                for _,b in pairs(itemBtns) do b:Destroy() end
                 itemBtns = {}
                 for _, opt in ipairs(options) do
-                    local isSelected = table.find(selected, opt) ~= nil
+                    local isSel = table.find(selected, opt) ~= nil
                     local ib = Instance.new("TextButton")
-                    ib.Parent              = dropScroll
-                    ib.Size                = UDim2.new(1,0,0,itemHeight)
-                    ib.BackgroundColor3    = isSelected and currentTheme.DropdownSelected or currentTheme.DropdownUnselected
-                    ib.BorderSizePixel     = 0
-                    ib.Text                = (isSelected and "✓  " or "    ")..opt
-                    ib.TextColor3          = currentTheme.TextColor
-                    ib.Font                = Enum.Font.Gotham
-                    ib.TextSize            = 12
-                    ib.TextXAlignment      = Enum.TextXAlignment.Left
-                    ib.ZIndex              = dropList.ZIndex + 2
+                    ib.Parent           = dScroll
+                    ib.Size             = UDim2.new(1,0,0,iH)
+                    ib.BackgroundColor3 = isSel and currentTheme.DropdownSelected or currentTheme.DropdownUnselected
+                    ib.BorderSizePixel  = 0
+                    ib.Text             = (isSel and "v  " or "    ")..opt
+                    ib.TextColor3       = currentTheme.TextColor
+                    ib.Font             = Enum.Font.Gotham
+                    ib.TextSize         = 12
+                    ib.TextXAlignment   = Enum.TextXAlignment.Left
+                    ib.ZIndex           = dropF.ZIndex+2
                     local ibPad = Instance.new("UIPadding")
                     ibPad.Parent    = ib
                     ibPad.PaddingLeft = UDim.new(0,8)
                     corner(ib, 4)
-
                     ib.MouseButton1Click:Connect(function()
                         if multi then
                             local idx = table.find(selected, opt)
-                            if idx then table.remove(selected, idx)
-                            else table.insert(selected, opt) end
+                            if idx then table.remove(selected,idx) else table.insert(selected,opt) end
                         else
                             selected = {opt}
                         end
-                        updateDisplay()
-                        buildItems()
+                        updateSel(); rebuildItems()
                         if flag then
-                            UTGLibrary.Flags[flag] = UTGLibrary.Flags[flag] or {}
+                            if not UTGLibrary.Flags[flag] then UTGLibrary.Flags[flag]={} end
                             UTGLibrary.Flags[flag].CurrentValue = selected
                             if cfgSave.Enabled then Window:SaveConfiguration() end
                         end
-                        if cfg.Callback then pcall(cfg.Callback, selected) end
+                        if dcfg.Callback then pcall(dcfg.Callback, selected) end
                         if not multi then
                             collapsed = true
-                            dropList.Visible = false
-                            tween(chevron, 0.15, {Rotation = 0})
+                            dropF.Visible = false
+                            tw(chev,0.15,{Rotation=0})
                         end
                     end)
                     table.insert(itemBtns, ib)
                 end
             end
-            buildItems()
-            updateDisplay()
+            rebuildItems(); updateSel()
 
-            -- Toggle collapse
-            local clickRegion = Instance.new("TextButton")
-            clickRegion.Parent              = card
-            clickRegion.Size                = UDim2.new(1,0,1,0)
-            clickRegion.BackgroundTransparency = 1
-            clickRegion.Text                = ""
-            clickRegion.ZIndex              = card.ZIndex + 1
-            clickRegion.MouseButton1Click:Connect(function()
+            local cr = Instance.new("TextButton")
+            cr.Parent = card
+            cr.Size   = UDim2.new(1,0,1,0)
+            cr.BackgroundTransparency = 1
+            cr.Text   = ""
+            cr.ZIndex = card.ZIndex+1
+            cr.MouseButton1Click:Connect(function()
                 collapsed = not collapsed
-                dropList.Visible = not collapsed
-                tween(chevron, 0.2, {Rotation = collapsed and 0 or 180})
+                dropF.Visible = not collapsed
+                tw(chev,0.2,{Rotation = collapsed and 0 or 180})
             end)
 
-            table.insert(themeApplyCallbacks, function(nt)
-                card.BackgroundColor3    = nt.ElementBackground
-                label.TextColor3         = nt.TextColor
-                selLabel.TextColor3      = nt.TextColor
-                chevron.TextColor3       = nt.TextColor
-                dropList.BackgroundColor3= nt.DropdownUnselected
-                buildItems()
+            table.insert(themeCallbacks, function(nt)
+                card.BackgroundColor3  = nt.ElementBackground
+                label.TextColor3       = nt.TextColor
+                selL.TextColor3        = nt.TextColor
+                chev.TextColor3        = nt.TextColor
+                dropF.BackgroundColor3 = nt.DropdownUnselected
+                rebuildItems()
             end)
 
-            local Dropdown = { CurrentOption = selected }
-            function Dropdown:Set(opt)
-                if type(opt) == "string" then opt = {opt} end
-                selected = opt
-                updateDisplay()
-                buildItems()
-                Dropdown.CurrentOption = selected
+            local Drop = { CurrentOption = selected }
+            function Drop:Set(opt)
+                if type(opt)=="string" then opt={opt} end
+                selected = opt; updateSel(); rebuildItems()
+                Drop.CurrentOption = selected
             end
-            function Dropdown:Refresh(newOptions)
-                options  = newOptions
-                selected = {}
-                updateDisplay()
-                buildItems()
+            function Drop:Refresh(newOpts)
+                options = newOpts; selected = {}; updateSel(); rebuildItems()
             end
-
-            if flag then UTGLibrary.Flags[flag] = Dropdown end
-            return Dropdown
+            if flag then UTGLibrary.Flags[flag] = Drop end
+            return Drop
         end
 
-        -- ── CreateKeybind ──────────────────────────────────────
-        function Tab:CreateKeybind(cfg)
-            cfg = cfg or {}
-            local flag      = cfg.Flag
-            local current   = cfg.CurrentKeybind or "None"
-            local hold      = cfg.HoldToInteract or false
+        function Tab:CreateKeybind(kcfg)
+            kcfg = kcfg or {}
+            local flag      = kcfg.Flag
+            local current   = kcfg.CurrentKeybind or "E"
+            local hold      = kcfg.HoldToInteract or false
             local listening = false
 
-            local card = makeCard(contentScroll, 36)
-            card.LayoutOrder = 7
-
-            local label = newLabel(card, cfg.Name or "Keybind", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
+            local card = makeCard(scroll, 36)
+            card.LayoutOrder = 6
+            local label = mkLabel(card, kcfg.Name or "Keybind", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
             label.Size     = UDim2.new(1,-90,1,0)
             label.Position = UDim2.new(0,10,0,0)
 
-            local keyBtn = Instance.new("TextButton")
-            keyBtn.Parent            = card
-            keyBtn.Size              = UDim2.new(0,70,0,24)
-            keyBtn.Position          = UDim2.new(1,-78,0.5,-12)
-            keyBtn.BackgroundColor3  = currentTheme.InputBackground
-            keyBtn.BorderSizePixel   = 0
-            keyBtn.Text              = current
-            keyBtn.TextColor3        = currentTheme.TextColor
-            keyBtn.Font              = Enum.Font.GothamMedium
-            keyBtn.TextSize          = 12
-            corner(keyBtn, 4)
-            stroke(keyBtn, currentTheme.InputStroke, 1)
+            local kBtn = Instance.new("TextButton")
+            kBtn.Parent           = card
+            kBtn.Size             = UDim2.new(0,72,0,24)
+            kBtn.Position         = UDim2.new(1,-80,0.5,-12)
+            kBtn.BackgroundColor3 = currentTheme.InputBackground
+            kBtn.BorderSizePixel  = 0
+            kBtn.Text             = current
+            kBtn.TextColor3       = currentTheme.TextColor
+            kBtn.Font             = Enum.Font.GothamMedium
+            kBtn.TextSize         = 12
+            corner(kBtn, 4)
+            local kS = mkStroke(kBtn, currentTheme.InputStroke, 1)
 
-            keyBtn.MouseButton1Click:Connect(function()
+            kBtn.MouseButton1Click:Connect(function()
                 listening = true
-                keyBtn.Text = "..."
+                kBtn.Text = "..."
             end)
 
+            -- FIX: compare i.KeyCode.Name string, not Enum
             UserInputService.InputBegan:Connect(function(i, gpe)
-                if not listening then
-                    -- fire callback on keypress
-                    if i.KeyCode.Name == current then
-                        if hold then
-                            if cfg.Callback then pcall(cfg.Callback, true) end
-                        else
-                            if cfg.Callback then pcall(cfg.Callback, false) end
-                        end
-                    end
-                    return
-                end
-                if i.UserInputType == Enum.UserInputType.Keyboard then
+                if gpe then return end
+                if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
+                if listening then
                     if i.KeyCode ~= Enum.KeyCode.Escape then
                         current = i.KeyCode.Name
                     end
-                    keyBtn.Text = current
+                    kBtn.Text = current
                     listening = false
                     if flag then
-                        UTGLibrary.Flags[flag] = UTGLibrary.Flags[flag] or {}
+                        if not UTGLibrary.Flags[flag] then UTGLibrary.Flags[flag]={} end
                         UTGLibrary.Flags[flag].CurrentValue = current
                         if cfgSave.Enabled then Window:SaveConfiguration() end
                     end
+                    return
+                end
+                if i.KeyCode.Name == current then
+                    if kcfg.Callback then pcall(kcfg.Callback, hold) end
                 end
             end)
-
             if hold then
                 UserInputService.InputEnded:Connect(function(i)
-                    if i.KeyCode.Name == current then
-                        if cfg.Callback then pcall(cfg.Callback, false) end
+                    if i.UserInputType == Enum.UserInputType.Keyboard
+                    and i.KeyCode.Name == current then
+                        if kcfg.Callback then pcall(kcfg.Callback, false) end
                     end
                 end)
             end
 
-            table.insert(themeApplyCallbacks, function(nt)
+            table.insert(themeCallbacks, function(nt)
                 card.BackgroundColor3  = nt.ElementBackground
                 label.TextColor3       = nt.TextColor
-                keyBtn.BackgroundColor3= nt.InputBackground
-                keyBtn.TextColor3      = nt.TextColor
-                keyBtn:FindFirstChildOfClass("UIStroke").Color = nt.InputStroke
+                kBtn.BackgroundColor3  = nt.InputBackground
+                kBtn.TextColor3        = nt.TextColor
+                kS.Color               = nt.InputStroke
             end)
 
-            local Keybind = { CurrentKeybind = current }
-            function Keybind:Set(key)
-                current = key
-                keyBtn.Text = key
-                Keybind.CurrentKeybind = key
-            end
-
-            if flag then UTGLibrary.Flags[flag] = Keybind end
-            return Keybind
+            local KB = { CurrentKeybind = current }
+            function KB:Set(v) current = v; kBtn.Text = v; KB.CurrentKeybind = v end
+            if flag then UTGLibrary.Flags[flag] = KB end
+            return KB
         end
 
-        -- ── CreateColorPicker ──────────────────────────────────
-        function Tab:CreateColorPicker(cfg)
-            cfg = cfg or {}
-            local flag    = cfg.Flag
-            local current = cfg.Color or Color3.fromRGB(255,255,255)
+        function Tab:CreateColorPicker(cpcfg)
+            cpcfg = cpcfg or {}
+            local flag    = cpcfg.Flag
+            local current = cpcfg.Color or Color3.fromRGB(255,255,255)
             local expanded = false
 
-            local card = makeCard(contentScroll, 36)
-            card.LayoutOrder = 8
+            local card = makeCard(scroll, 36)
+            card.LayoutOrder = 7
             card.ClipsDescendants = false
 
-            local label = newLabel(card, cfg.Name or "Color Picker", 13,
-                currentTheme.TextColor, Enum.Font.GothamMedium)
-            label.Size     = UDim2.new(1,-80,1,0)
+            local label = mkLabel(card, cpcfg.Name or "Color Picker", 13, currentTheme.TextColor, Enum.Font.GothamMedium)
+            label.Size     = UDim2.new(1,-50,1,0)
             label.Position = UDim2.new(0,10,0,0)
-
-            -- Color preview swatch
-            local swatch = newFrame(card, UDim2.new(0,24,0,24),
-                UDim2.new(1,-32,0.5,-12), current, 0)
+            local swatch = mkFrame(card, UDim2.new(0,24,0,24), UDim2.new(1,-32,0.5,-12), current, 0)
             corner(swatch, 4)
-            stroke(swatch, Color3.fromRGB(80,80,80), 1)
+            mkStroke(swatch, Color3.fromRGB(80,80,80), 1)
 
-            -- Expanded color panel
-            local panel = newFrame(card, UDim2.new(1,0,0,140),
-                UDim2.new(0,0,1,4), currentTheme.ElementBackground, 0)
-            panel.ZIndex  = card.ZIndex + 5
+            local panel = mkFrame(card, UDim2.new(1,0,0,140), UDim2.new(0,0,1,4), currentTheme.ElementBackground, 0)
+            panel.ZIndex  = card.ZIndex+5
             panel.Visible = false
             corner(panel, 8)
-            stroke(panel, currentTheme.ElementStroke, 1)
+            mkStroke(panel, currentTheme.ElementStroke, 1)
 
-            -- R/G/B sliders inside panel
-            local function makeColorSlider(parent, labelText, yPos, col, maxV)
-                local bg = newFrame(parent, UDim2.new(1,-16,0,6),
-                    UDim2.new(0,8,0,yPos+14), col, 0)
+            local function mkCS(lbl, yOff, barCol)
+                local bg = mkFrame(panel, UDim2.new(1,-36,0,6), UDim2.new(0,28,0,yOff+14), barCol, 0)
                 corner(bg, 3)
-                local fill = newFrame(bg, UDim2.new(0,0,1,0),
-                    UDim2.new(0,0,0,0), col, 0)
-                corner(fill, 3)
-                local lbl = newLabel(parent, labelText, 11,
-                    currentTheme.TextColor, Enum.Font.Gotham)
-                lbl.Size     = UDim2.new(0,14,0,14)
-                lbl.Position = UDim2.new(0,8,0,yPos)
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                local valL = newLabel(parent, "255", 11,
-                    currentTheme.TextColor, Enum.Font.Gotham)
-                valL.Size     = UDim2.new(0,24,0,14)
-                valL.Position = UDim2.new(1,-30,0,yPos)
-                valL.TextXAlignment = Enum.TextXAlignment.Right
-                return bg, fill, valL
+                local fl = mkFrame(bg, UDim2.new(0,0,1,0), UDim2.new(0,0,0,0), barCol, 0)
+                corner(fl, 3)
+                local ll = mkLabel(panel, lbl, 11, currentTheme.TextColor, Enum.Font.GothamBold)
+                ll.Size     = UDim2.new(0,20,0,14)
+                ll.Position = UDim2.new(0,6,0,yOff)
+                ll.TextXAlignment = Enum.TextXAlignment.Left
+                local vl = mkLabel(panel, "255", 11, currentTheme.TextColor, Enum.Font.Gotham)
+                vl.Size     = UDim2.new(0,28,0,14)
+                vl.Position = UDim2.new(1,-30,0,yOff)
+                vl.TextXAlignment = Enum.TextXAlignment.Right
+                return bg, fl, vl
             end
-
-            local rBg, rFill, rVal = makeColorSlider(panel,"R",10,Color3.fromRGB(200,80,80),255)
-            local gBg, gFill, gVal = makeColorSlider(panel,"G",42,Color3.fromRGB(80,200,80),255)
-            local bBg, bFill, bVal = makeColorSlider(panel,"B",74,Color3.fromRGB(80,80,200),255)
+            local rBg,rFl,rVl = mkCS("R", 8,  Color3.fromRGB(200,80,80))
+            local gBg,gFl,gVl = mkCS("G", 40, Color3.fromRGB(80,200,80))
+            local bBg,bFl,bVl = mkCS("B", 72, Color3.fromRGB(80,80,200))
 
             local hexBox = Instance.new("TextBox")
-            hexBox.Parent          = panel
-            hexBox.Size            = UDim2.new(1,-16,0,22)
-            hexBox.Position        = UDim2.new(0,8,0,106)
+            hexBox.Parent           = panel
+            hexBox.Size             = UDim2.new(1,-16,0,22)
+            hexBox.Position         = UDim2.new(0,8,0,104)
             hexBox.BackgroundColor3 = currentTheme.InputBackground
             hexBox.BorderSizePixel  = 0
             hexBox.TextColor3       = currentTheme.TextColor
             hexBox.Font             = Enum.Font.Gotham
             hexBox.TextSize         = 12
             hexBox.PlaceholderText  = "Hex: FFFFFF"
+            hexBox.ClearTextOnFocus = false
             corner(hexBox, 4)
-            stroke(hexBox, currentTheme.InputStroke, 1)
+            mkStroke(hexBox, currentTheme.InputStroke, 1)
 
-            local function applyColor(c)
-                current    = c
+            local function applyCP(c)
+                current = c
                 swatch.BackgroundColor3 = c
                 local r,g,b = math.round(c.R*255), math.round(c.G*255), math.round(c.B*255)
-                tween(rFill, 0.1, {Size = UDim2.new(c.R,0,1,0)})
-                tween(gFill, 0.1, {Size = UDim2.new(c.G,0,1,0)})
-                tween(bFill, 0.1, {Size = UDim2.new(c.B,0,1,0)})
-                rVal.Text = tostring(r)
-                gVal.Text = tostring(g)
-                bVal.Text = tostring(b)
+                tw(rFl,0.1,{Size=UDim2.new(c.R,0,1,0)})
+                tw(gFl,0.1,{Size=UDim2.new(c.G,0,1,0)})
+                tw(bFl,0.1,{Size=UDim2.new(c.B,0,1,0)})
+                rVl.Text = tostring(r); gVl.Text = tostring(g); bVl.Text = tostring(b)
                 hexBox.Text = string.format("%02X%02X%02X",r,g,b)
                 if flag then
-                    UTGLibrary.Flags[flag] = UTGLibrary.Flags[flag] or {}
+                    if not UTGLibrary.Flags[flag] then UTGLibrary.Flags[flag]={} end
                     UTGLibrary.Flags[flag].CurrentValue = {c.R,c.G,c.B}
                     if cfgSave.Enabled then Window:SaveConfiguration() end
                 end
-                if cfg.Callback then pcall(cfg.Callback, c) end
+                if cpcfg.Callback then pcall(cpcfg.Callback, c) end
             end
+            applyCP(current)
 
-            applyColor(current)
-
-            -- Drag logic for R slider
-            local draggingR,draggingG,draggingB = false,false,false
-            local function makeSliderLogic(bg, flag_d, setR, setG, setB)
-                local clickR = Instance.new("TextButton")
-                clickR.Parent              = bg
-                clickR.Size                = UDim2.new(1,0,0,20)
-                clickR.Position            = UDim2.new(0,0,0.5,-10)
-                clickR.BackgroundTransparency = 1
-                clickR.Text                = ""
-                clickR.ZIndex              = bg.ZIndex + 2
-                local dragging_local       = flag_d
-                clickR.InputBegan:Connect(function(i)
-                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging_local[1] = true
-                    end
+            local function mkCSDrag(bg, isR, isG, isB)
+                local dragging = {false}
+                local cr2 = Instance.new("TextButton")
+                cr2.Parent = bg
+                cr2.Size   = UDim2.new(1,0,0,20)
+                cr2.Position = UDim2.new(0,0,0.5,-10)
+                cr2.BackgroundTransparency = 1
+                cr2.Text   = ""
+                cr2.ZIndex = bg.ZIndex+2
+                cr2.InputBegan:Connect(function(i)
+                    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging[1]=true end
                 end)
                 UserInputService.InputEnded:Connect(function(i)
-                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging_local[1] = false
-                    end
+                    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging[1]=false end
                 end)
                 UserInputService.InputChanged:Connect(function(i)
-                    if dragging_local[1] and i.UserInputType == Enum.UserInputType.MouseMovement then
-                        local relX = math.clamp((i.Position.X - bg.AbsolutePosition.X)/bg.AbsoluteSize.X,0,1)
-                        local r,g,b = current.R,current.G,current.B
-                        if setR then r = relX end
-                        if setG then g = relX end
-                        if setB then b = relX end
-                        applyColor(Color3.new(r,g,b))
-                    end
+                    if not dragging[1] then return end
+                    if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                    local relX = math.clamp((i.Position.X-bg.AbsolutePosition.X)/bg.AbsoluteSize.X,0,1)
+                    local r,g,b = current.R,current.G,current.B
+                    if isR then r=relX end; if isG then g=relX end; if isB then b=relX end
+                    applyCP(Color3.new(r,g,b))
                 end)
             end
-            local dr,dg,db = {false},{false},{false}
-            makeSliderLogic(rBg,dr,true ,false,false)
-            makeSliderLogic(gBg,dg,false,true ,false)
-            makeSliderLogic(bBg,db,false,false,true )
+            mkCSDrag(rBg,true,false,false)
+            mkCSDrag(gBg,false,true,false)
+            mkCSDrag(bBg,false,false,true)
 
             hexBox.FocusLost:Connect(function()
                 local hex = hexBox.Text:gsub("#","")
                 if #hex == 6 then
-                    local r = tonumber(hex:sub(1,2),16)
-                    local g = tonumber(hex:sub(3,4),16)
-                    local b = tonumber(hex:sub(5,6),16)
-                    if r and g and b then
-                        applyColor(Color3.fromRGB(r,g,b))
-                    end
+                    local r=tonumber(hex:sub(1,2),16)
+                    local g=tonumber(hex:sub(3,4),16)
+                    local b=tonumber(hex:sub(5,6),16)
+                    if r and g and b then applyCP(Color3.fromRGB(r,g,b)) end
                 end
             end)
 
-            local clickRegion = Instance.new("TextButton")
-            clickRegion.Parent              = card
-            clickRegion.Size                = UDim2.new(1,0,1,0)
-            clickRegion.BackgroundTransparency = 1
-            clickRegion.Text                = ""
-            clickRegion.ZIndex              = card.ZIndex + 1
-            clickRegion.MouseButton1Click:Connect(function()
+            local cr3 = Instance.new("TextButton")
+            cr3.Parent = card
+            cr3.Size   = UDim2.new(1,0,1,0)
+            cr3.BackgroundTransparency = 1
+            cr3.Text   = ""
+            cr3.ZIndex = card.ZIndex+1
+            cr3.MouseButton1Click:Connect(function()
                 expanded = not expanded
                 panel.Visible = expanded
-                tween(card, 0.2, {Size = expanded and UDim2.new(1,-12,0,180) or UDim2.new(1,-12,0,36)})
+                tw(card,0.2,{Size = expanded and UDim2.new(1,-12,0,180) or UDim2.new(1,-12,0,36)})
             end)
 
-            table.insert(themeApplyCallbacks, function(nt)
+            table.insert(themeCallbacks, function(nt)
                 card.BackgroundColor3  = nt.ElementBackground
                 label.TextColor3       = nt.TextColor
                 panel.BackgroundColor3 = nt.ElementBackground
             end)
 
             local CP = { CurrentColor = current }
-            function CP:Set(c)
-                applyColor(c)
-                CP.CurrentColor = c
-            end
-
+            function CP:Set(c) applyCP(c); CP.CurrentColor = c end
             if flag then UTGLibrary.Flags[flag] = CP end
             return CP
         end
 
-        -- ── CreateLabel ────────────────────────────────────────
-        function Tab:CreateLabel(text, _icon, color, _bold)
-            local card = makeCard(contentScroll, 28)
-            card.LayoutOrder = 9
-
-            local lbl = newLabel(card, text or "Label", 12,
-                color or currentTheme.TextColor, Enum.Font.Gotham)
+        function Tab:CreateLabel(text, _icon, color)
+            local card = makeCard(scroll, 28)
+            card.LayoutOrder = 8
+            local lbl = mkLabel(card, text or "Label", 12, color or currentTheme.TextColor, Enum.Font.Gotham)
             lbl.Size     = UDim2.new(1,-16,1,0)
             lbl.Position = UDim2.new(0,10,0,0)
             lbl.TextWrapped = true
-
-            table.insert(themeApplyCallbacks, function(nt)
+            table.insert(themeCallbacks, function(nt)
                 card.BackgroundColor3 = nt.ElementBackground
                 if not color then lbl.TextColor3 = nt.TextColor end
             end)
-
-            local Label = {}
-            function Label:Set(newText) lbl.Text = newText end
-            return Label
+            local L = {}
+            function L:Set(t) lbl.Text = t end
+            return L
         end
 
-        -- ── CreateParagraph ────────────────────────────────────
-        function Tab:CreateParagraph(cfg)
-            cfg = cfg or {}
-            local titleText   = cfg.Title   or "Paragraph"
-            local contentText = cfg.Content or ""
-
-            local textSize = 12
-            -- estimate height
-            local estLines = math.max(1, math.ceil(#contentText / 45))
-            local height   = 20 + estLines*14 + 12
-
-            local card = makeCard(contentScroll, height)
-            card.LayoutOrder = 10
-
-            local tl = newLabel(card, titleText, 13,
-                currentTheme.TextColor, Enum.Font.GothamBold)
+        function Tab:CreateParagraph(pcfg)
+            pcfg = pcfg or {}
+            local titleText   = pcfg.Title   or "Paragraph"
+            local contentText = pcfg.Content or ""
+            local estH = 22 + math.max(1,math.ceil(#contentText/48))*14+8
+            local card = makeCard(scroll, estH)
+            card.LayoutOrder = 9
+            local tl = mkLabel(card, titleText, 13, currentTheme.TextColor, Enum.Font.GothamBold)
             tl.Size     = UDim2.new(1,-16,0,16)
             tl.Position = UDim2.new(0,10,0,4)
-
-            local cl = newLabel(card, contentText, textSize,
-                currentTheme.TextColor, Enum.Font.Gotham)
-            cl.Size              = UDim2.new(1,-16,0,height-22)
-            cl.Position          = UDim2.new(0,10,0,20)
-            cl.TextWrapped       = true
-            cl.TextYAlignment    = Enum.TextYAlignment.Top
-            cl.TextTransparency  = 0.25
-
-            table.insert(themeApplyCallbacks, function(nt)
+            local cl = mkLabel(card, contentText, 12, currentTheme.TextColor, Enum.Font.Gotham)
+            cl.Size             = UDim2.new(1,-16,0,estH-24)
+            cl.Position         = UDim2.new(0,10,0,20)
+            cl.TextWrapped      = true
+            cl.TextYAlignment   = Enum.TextYAlignment.Top
+            cl.TextTransparency = 0.25
+            table.insert(themeCallbacks, function(nt)
                 card.BackgroundColor3 = nt.ElementBackground
                 tl.TextColor3         = nt.TextColor
                 cl.TextColor3         = nt.TextColor
             end)
-
-            local Para = {}
-            function Para:Set(newTitle, newContent)
-                tl.Text = newTitle or tl.Text
-                cl.Text = newContent or cl.Text
+            local P = {}
+            function P:Set(newT, newC)
+                if newT then tl.Text = newT end
+                if newC then cl.Text = newC end
             end
-            return Para
+            return P
         end
 
-        -- ── Settings tab helper ────────────────────────────────
-        -- (internal – used by the library's own settings tab)
-        Tab._tabData = tabData
-        return Tab
-    end -- CreateTab
-
-        --  BUILT-IN SETTINGS TAB
-        local SettingsTab = Window:CreateTab("⚙ Settings")
-
-    SettingsTab:CreateSection("Appearance")
-
-    local themeNames = {}
-    for k in pairs(Themes) do table.insert(themeNames, k) end
-    table.sort(themeNames)
-
-    SettingsTab:CreateDropdown({
-        Name    = "Theme",
-        Options = themeNames,
-        CurrentOption = {themeName},
-        MultipleOptions = false,
-        Flag    = "_UTG_Theme",
-        Callback = function(opts)
-            Window:ModifyTheme(opts[1])
-        end
-    })
-
-    SettingsTab:CreateSection("Toggle Button")
-
-    SettingsTab:CreateButton({
-        Name = "Reset Toggle Position",
-        Callback = function()
-            ToggleBtn.Position = defaultTogglePos
-        end
-    })
-
-    SettingsTab:CreateToggle({
-        Name         = "Show Toggle Button",
-        CurrentValue = false,
-        Flag         = "_UTG_ShowToggle",
-        Callback     = function(v)
-            -- Only show when main is hidden
-            if not guiVisible then
-                ToggleBtn.Visible = v
-            end
-        end
-    })
-
-    SettingsTab:CreateSection("Script")
-
-    SettingsTab:CreateButton({
-        Name = "Close Script",
-        Callback = function()
-            Window:Destroy()
-        end
-    })
-
-    if cfgSave.Enabled then
-        SettingsTab:CreateSection("Configuration")
-        SettingsTab:CreateButton({
-            Name = "Save Config",
-            Callback = function()
-                Window:SaveConfiguration()
-                UTGLibrary:Notify({
-                    Title   = "Config Saved",
-                    Content = "Configuration has been saved.",
-                    Duration = 3
-                })
-            end
-        })
-        SettingsTab:CreateButton({
-            Name = "Load Config",
-            Callback = function()
-                Window:LoadConfiguration()
-                UTGLibrary:Notify({
-                    Title   = "Config Loaded",
-                    Content = "Configuration has been loaded.",
-                    Duration = 3
-                })
-            end
-        })
-    end
-
-        --  ANIMATE IN
-        MainFrame.Size = UDim2.new(0,0,0,0)
-    MainFrame.BackgroundTransparency = 1
-    task.delay(0.05, function()
-        tween(MainFrame, 0.45, {
-            Size = UDim2.new(0,768,0,417),
-            BackgroundTransparency = 0.05
-        })
-    end)
-
-    return Window
-end
-
--- skibidi toiletttttttt
--- don't skid pleaseee
-
-return UTGLibrary
-ard, contentText, textSize,
-                currentTheme.TextColor, Enum.Font.Gotham)
-            cl.Size              = UDim2.new(1,-16,0,height-22)
-            cl.Position          = UDim2.new(0,10,0,20)
-            cl.TextWrapped       = true
-            cl.TextYAlignment    = Enum.TextYAlignment.Top
-            cl.TextTransparency  = 0.25
-
-            table.insert(themeApplyCallbacks, function(nt)
-                card.BackgroundColor3 = nt.ElementBackground
-                tl.TextColor3         = nt.TextColor
-                cl.TextColor3         = nt.TextColor
-            end)
-
-            local Para = {}
-            function Para:Set(newTitle, newContent)
-                tl.Text = newTitle or tl.Text
-                cl.Text = newContent or cl.Text
-            end
-            return Para
-        end
-
-        -- ── Settings tab helper ────────────────────────────────
-        -- (internal – used by the library's own settings tab)
-        Tab._tabData = tabData
         return Tab
     end -- CreateTab
 
     -- ════════════════════════════════════════════════════════
     --  BUILT-IN SETTINGS TAB
     -- ════════════════════════════════════════════════════════
-    local SettingsTab = Window:CreateTab("⚙ Settings")
-
+    local SettingsTab = Window:CreateTab("Settings")
     SettingsTab:CreateSection("Appearance")
-
     local themeNames = {}
     for k in pairs(Themes) do table.insert(themeNames, k) end
     table.sort(themeNames)
-
     SettingsTab:CreateDropdown({
-        Name    = "Theme",
-        Options = themeNames,
-        CurrentOption = {themeName},
-        MultipleOptions = false,
-        Flag    = "_UTG_Theme",
-        Callback = function(opts)
-            Window:ModifyTheme(opts[1])
-        end
+        Name = "Theme", Options = themeNames,
+        CurrentOption = {themeName}, MultipleOptions = false,
+        Flag = "_UTG_Theme",
+        Callback = function(opts) Window:ModifyTheme(opts[1]) end
     })
-
     SettingsTab:CreateSection("Toggle Button")
-
-    SettingsTab:CreateButton({
-        Name = "Reset Toggle Position",
-        Callback = function()
-            ToggleBtn.Position = defaultTogglePos
-        end
-    })
-
-    SettingsTab:CreateToggle({
-        Name         = "Show Toggle Button",
-        CurrentValue = false,
-        Flag         = "_UTG_ShowToggle",
-        Callback     = function(v)
-            -- Only show when main is hidden
-            if not guiVisible then
-                ToggleBtn.Visible = v
-            end
-        end
-    })
-
+    SettingsTab:CreateButton({ Name = "Reset Toggle Position",
+        Callback = function() ToggleBtn.Position = defaultTogglePos end })
     SettingsTab:CreateSection("Script")
-
-    SettingsTab:CreateButton({
-        Name = "Close Script",
-        Callback = function()
-            Window:Destroy()
-        end
-    })
-
+    SettingsTab:CreateButton({ Name = "Close Script",
+        Callback = function() Window:Destroy() end })
     if cfgSave.Enabled then
         SettingsTab:CreateSection("Configuration")
-        SettingsTab:CreateButton({
-            Name = "Save Config",
-            Callback = function()
-                Window:SaveConfiguration()
-                UTGLibrary:Notify({
-                    Title   = "Config Saved",
-                    Content = "Configuration has been saved.",
-                    Duration = 3
-                })
-            end
-        })
-        SettingsTab:CreateButton({
-            Name = "Load Config",
-            Callback = function()
-                Window:LoadConfiguration()
-                UTGLibrary:Notify({
-                    Title   = "Config Loaded",
-                    Content = "Configuration has been loaded.",
-                    Duration = 3
-                })
-            end
-        })
+        SettingsTab:CreateButton({ Name = "Save Config", Callback = function()
+            Window:SaveConfiguration()
+            UTGLibrary:Notify({Title="Saved",Content="Config saved.",Duration=3})
+        end})
+        SettingsTab:CreateButton({ Name = "Load Config", Callback = function()
+            Window:LoadConfiguration()
+            UTGLibrary:Notify({Title="Loaded",Content="Config loaded.",Duration=3})
+        end})
     end
 
-    -- ════════════════════════════════════════════════════════
-    --  ANIMATE IN
-    -- ════════════════════════════════════════════════════════
+    -- Animate in
     MainFrame.Size = UDim2.new(0,0,0,0)
     MainFrame.BackgroundTransparency = 1
     task.delay(0.05, function()
-        tween(MainFrame, 0.45, {
-            Size = UDim2.new(0,768,0,417),
-            BackgroundTransparency = 0.05
-        })
+        tw(MainFrame, 0.45, {Size=UDim2.new(0,768,0,417), BackgroundTransparency=0.05})
     end)
 
     return Window
 end
-
--- ════════════════════════════════════════════════════════════
---  TOP-LEVEL NOTIFY (accessible before window is created)
--- ════════════════════════════════════════════════════════════
--- (also callable as UTGLibrary:Notify after window created —
---  the window overrides nothing, UTGLibrary still holds it)
 
 return UTGLibrary
-)
-
-    SettingsTab:CreateSection("Toggle Button")
-
-    SettingsTab:CreateButton({
-        Name = "Reset Toggle Position",
-        Callback = function()
-            ToggleBtn.Position = defaultTogglePos
-        end
-    })
-
-    SettingsTab:CreateToggle({
-        Name         = "Show Toggle Button",
-        CurrentValue = false,
-        Flag         = "_UTG_ShowToggle",
-        Callback     = function(v)
-            -- Only show when main is hidden
-            if not guiVisible then
-                ToggleBtn.Visible = v
-            end
-        end
-    })
-
-    SettingsTab:CreateSection("Script")
-
-    SettingsTab:CreateButton({
-        Name = "Close Script",
-        Callback = function()
-            Window:Destroy()
-        end
-    })
-
-    if cfgSave.Enabled then
-        SettingsTab:CreateSection("Configuration")
-        SettingsTab:CreateButton({
-            Name = "Save Config",
-            Callback = function()
-                Window:SaveConfiguration()
-                UTGLibrary:Notify({
-                    Title   = "Config Saved",
-                    Content = "Configuration has been saved.",
-                    Duration = 3
-                })
-            end
-        })
-        SettingsTab:CreateButton({
-            Name = "Load Config",
-            Callback = function()
-                Window:LoadConfiguration()
-                UTGLibrary:Notify({
-                    Title   = "Config Loaded",
-                    Content = "Configuration has been loaded.",
-                    Duration = 3
-                })
-            end
-        })
-    end
-
-    -- ════════════════════════════════════════════════════════
-    --  ANIMATE IN
-    -- ════════════════════════════════════════════════════════
-    MainFrame.Size = UDim2.new(0,0,0,0)
-    MainFrame.BackgroundTransparency = 1
-    task.delay(0.05, function()
-        tween(MainFrame, 0.45, {
-            Size = UDim2.new(0,768,0,417),
-            BackgroundTransparency = 0.05
-        })
+        tw(MainFrame, 0.45, {Size=UDim2.new(0,768,0,417), BackgroundTransparency=0.05})
     end)
 
     return Window
 end
-
--- ════════════════════════════════════════════════════════════
---  TOP-LEVEL NOTIFY (accessible before window is created)
--- ════════════════════════════════════════════════════════════
--- (also callable as UTGLibrary:Notify after window created —
---  the window overrides nothing, UTGLibrary still holds it)
 
 return UTGLibrary
